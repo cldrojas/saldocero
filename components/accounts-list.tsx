@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Account, Budget } from '@/types'
+import { Account } from '@/types'
 import {
   Wallet,
   PiggyBank,
@@ -68,7 +68,6 @@ const iconMap = {
 
 interface AccountsListProps {
   accounts: Account[]
-  budget: Budget
   onAddAccount: (account: Omit<Account, 'id'>) => void
   onUpdateAccount: (account: Account) => void
   onDeleteAccount: (accountId: string) => boolean
@@ -76,7 +75,6 @@ interface AccountsListProps {
 
 export function AccountsList({
   accounts,
-  budget,
   onAddAccount,
   onUpdateAccount,
   onDeleteAccount

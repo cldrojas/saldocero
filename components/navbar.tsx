@@ -108,7 +108,6 @@ export default function Navbar({
           <ErrorBoundary>
             <AccountsList
               accounts={accounts}
-              budget={budget}
               onAddAccount={addAccount}
               onUpdateAccount={updateAccount}
               onDeleteAccount={deleteAccount}

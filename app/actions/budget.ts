@@ -261,6 +261,9 @@ export async function addTransaction({ type, amount, description, account_id, da
 
 /**
  * removeTransaction - Remueve una transacción.
+ * El balance se deriva de SUM(transactions), así que borrar el registro ya
+ * revierte su efecto contable (refund=true). Con refund=false se inserta una
+ * réplica del monto para que el gasto/ingreso siga contando (dinero perdido).
  */
 export async function removeTransaction(id: string, refund: boolean = true) {
   const db = getDb()
@@ -272,14 +275,15 @@ export async function removeTransaction(id: string, refund: boolean = true) {
     const remove = db.prepare(`DELETE FROM transactions WHERE id = ?`)
     remove.run(id)
 
-    if (refund && tx) {
-      const reverse = db.prepare(`
+    // Sin reembolso: replicar el monto para que el efecto contable permanezca
+    // (el balance deriva de SUM, así que sin réplica el dinero "volvería solo").
+    if (!refund && tx) {
+      const replica = db.prepare(`
         INSERT INTO transactions (id, type, amount, description, account_id, date, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)
-      const reverseId = crypto.randomUUID()
-      const reverseAmount = tx.type === 'expense' ? tx.amount : -tx.amount
-      reverse.run(reverseId, tx.type, reverseAmount, `Refund: ${tx.description}`, tx.account_id, tx.date, new Date().toISOString(), new Date().toISOString())
+      const replicaId = crypto.randomUUID()
+      replica.run(replicaId, tx.type, tx.amount, `Unrefunded: ${tx.description}`, tx.account_id, tx.date, new Date().toISOString(), new Date().toISOString())
     }
 
     return { success: true }
