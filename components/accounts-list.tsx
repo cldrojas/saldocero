@@ -89,11 +89,8 @@ export function AccountsList({
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
-  // Filter accounts based on mode (hide savings and investment in track mode)
-  const isTrackMode = budget.mode === 'track' || (!budget.mode && !budget.endDate)
-  const filteredAccounts = isTrackMode
-    ? accounts.filter(acc => acc.type !== 'savings' && acc.type !== 'investment')
-    : accounts
+  // Show all accounts regardless of mode
+  const filteredAccounts = accounts
 
   const handleEditClick = (account: Account) => {
     setEditingAccount(account)

@@ -73,13 +73,9 @@ export function DailyBudgetStatus({
   const dailyAccount = accounts.find(acc => acc.id === 'daily')
   const totalBudget = dailyAccount ? dailyAccount.balance : 0
 
-  // Track mode: show either the total of visible spending accounts or a single selected account
+  // Track mode: show either the total of all visible accounts or a single selected account
   if (isTrackMode) {
-    // In track mode savings and investment are not part of spending — exclude them
-    // from the dropdown and from the total (same rule as the accounts list).
-    const visibleAccounts = accounts.filter(
-      acc => !acc.hidden && acc.type !== 'savings' && acc.type !== 'investment'
-    )
+    const visibleAccounts = accounts.filter(acc => !acc.hidden)
 
     const selectedAccountExists =
       selectedAccountId === TOTAL_ACCOUNTS_VALUE ||
@@ -104,7 +100,7 @@ export function DailyBudgetStatus({
                 <SelectValue placeholder={t('selectBalanceAccount')} />
               </SelectTrigger>
               <SelectContent className="min-w-[12rem]">
-                <SelectItem value={TOTAL_ACCOUNTS_VALUE}>{t('totalBudget')}</SelectItem>
+                <SelectItem value={TOTAL_ACCOUNTS_VALUE}>{t('totalAllAccounts')}</SelectItem>
                 {visibleAccounts.map(account => (
                   <SelectItem key={account.id} value={account.id}>
                     {account.name}
@@ -113,7 +109,7 @@ export function DailyBudgetStatus({
               </SelectContent>
             </Select>
           ) : (
-            <CardTitle>{t('totalBudget') || 'Total Balance'}</CardTitle>
+            <CardTitle>{t('totalAllAccounts') || 'All accounts'}</CardTitle>
           )}
           <CardDescription>{t('trackModeDescription') || 'Track your spending'}</CardDescription>
         </CardHeader>

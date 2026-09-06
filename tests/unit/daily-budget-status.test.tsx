@@ -37,20 +37,19 @@ function renderWithProviders() {
   )
 }
 
-describe('DailyBudgetStatus track mode', () => {
+describe('DailyBudgetStatus hidden accounts', () => {
   beforeEach(() => {
     window.localStorage.clear()
   })
 
-  it('excludes savings and investment from the summed total', () => {
+  it('excludes hidden accounts from the summed total', () => {
     renderWithProviders()
 
-    // In track mode savings and investment are not part of spending:
-    // only daily (1000) counts toward the total.
-    expect(screen.getByText(/1\.000/)).toBeInTheDocument()
+    // Visible balances: 1000 (daily) + 2000 (investment) = 3000
+    expect(screen.getByText(/3\.000/)).toBeInTheDocument()
   })
 
-  it('excludes savings and investment from the balance dropdown', () => {
+  it('excludes hidden accounts from the balance dropdown', () => {
     renderWithProviders()
 
     fireEvent.click(screen.getByRole('combobox'))
@@ -58,18 +57,18 @@ describe('DailyBudgetStatus track mode', () => {
     const options = screen.getAllByRole('option')
     const labels = options.map((option) => option.textContent)
 
-    expect(labels).toContain('Total Budget')
+    expect(labels).toContain('All accounts')
     expect(labels).toContain('Daily Budget')
-    expect(labels).not.toContain('Investment')
+    expect(labels).toContain('Investment')
     expect(labels).not.toContain('Savings')
   })
 
-  it('falls back to the total when the selected account is savings', () => {
+  it('falls back to the total when the selected account is hidden', () => {
     window.localStorage.setItem('dailyBudget:selectedBalanceAccount', 'savings')
     renderWithProviders()
 
-    // 'savings' is not part of track mode → falls back to total of spending accounts (1000)
-    expect(screen.getByText(/1\.000/)).toBeInTheDocument()
+    // 'savings' is hidden → falls back to total of visible accounts (3000)
+    expect(screen.getByText(/3\.000/)).toBeInTheDocument()
   })
 
   it('shows a specific visible account balance when selected', () => {
