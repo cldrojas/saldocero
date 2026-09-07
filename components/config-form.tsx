@@ -25,7 +25,7 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
 }) {
   const { t } = useLanguage()
   const { toast } = useToast()
-  const { setLastCheckedDay } = useBudget()
+  const { setLastCheckedDay, accounts, transactions, dailyAllowance, remainingToday, progress, isSetup } = useBudget()
   const [isOpen, setIsOpen] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDeleteDateConfirm, setShowDeleteDateConfirm] = useState(false)
@@ -110,18 +110,49 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
                   type="button"
                   variant="secondary"
                   onClick={() => {
-                    const data = localStorage.getItem('daily-budget-data')
-                    if (data) {
-                      const blob = new Blob([data], { type: 'application/json' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = 'daily-budget-export.json'
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                      URL.revokeObjectURL(url)
+                    // Export desde la fuente real (SQLite vía hook), no del
+                    // backup localStorage (reemplazado tras el pivote sqlite-local).
+                    const exportData = {
+                      budget: {
+                        startAmount: budget.startAmount,
+                        startDate: budget.startDate ? budget.startDate.toISOString() : null,
+                        endDate: budget.endDate ? budget.endDate.toISOString() : null,
+                        mode: budget.mode || 'track',
+                        autoSave: budget.autoSave,
+                        isSetup,
+                      },
+                      accounts: accounts.map((a) => ({
+                        id: a.id,
+                        name: a.name,
+                        type: a.type,
+                        icon: a.icon,
+                        hidden: Boolean(a.hidden),
+                        balance: a.balance,
+                      })),
+                      transactions: transactions.map((tx) => ({
+                        id: tx.id,
+                        type: tx.type,
+                        amount: tx.amount,
+                        description: tx.description,
+                        account: tx.account,
+                        date: tx.date ? new Date(tx.date).toISOString() : null,
+                      })),
+                      dailyAllowance,
+                      remainingToday,
+                      progress,
+                      lastCheckedDay: null,
                     }
+                    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+                      type: 'application/json',
+                    })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = 'daily-budget-export.json'
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                    URL.revokeObjectURL(url)
                   }}
                 >
                   {t("exportData")}
