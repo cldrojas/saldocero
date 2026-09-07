@@ -119,8 +119,10 @@ export async function migrateFromLocalStorage(): Promise<boolean> {
 
     // Process all accounts including custom ones
     for (const acc of parsedData.accounts) {
-      if (!idMap[acc.id] && acc.type !== 'custom') {
-        // Generar UUID estable para accounts no-default usando type + name
+      if (!idMap[acc.id]) {
+        // Generar UUID estable para cualquier cuenta sin mapeo previo
+        // (default no presentes en el idMap inicial o custom). El id original
+        // de localStorage no se reutiliza como PK: SQLite lo normaliza a UUID.
         idMap[acc.id] = uuidv5(`daily-budget-account-${acc.type}-${acc.name}`, MIGRATION_NAMESPACE)
       }
       processedAccounts.push({

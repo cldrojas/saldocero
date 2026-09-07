@@ -8,38 +8,38 @@ Leyenda: `[x]` completado / `[ ]` pendiente
 
 ## Fase 1: SQLite + Schema + Server Actions + next.config (2 días)
 
-- [ ] 1.1 `pnpm add better-sqlite3` (⚠️ native addon — requiere compilación C++ y `serverExternalPackages`; verificar que compila en el runtime Node de Next 16)
-- [ ] 1.2 Actualizar `next.config.mjs` (hoy `{}`) con:
+- [x] 1.1 `pnpm add better-sqlite3` (⚠️ native addon — requiere compilación C++ y `serverExternalPackages`; verificar que compila en el runtime Node de Next 16) — **v13.0.3 instalado; verificado en Next 16.2.6 dev server**
+- [x] 1.2 Actualizar `next.config.mjs` (hoy `{}`) con:
       ```js
       const nextConfig = { serverExternalPackages: ['better-sqlite3'] }
       export default nextConfig
       ```
-- [ ] 1.3 Crear `lib/db/schema.sql` con DDL idempotente (`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`) de las 4 tablas:
+- [x] 1.3 Crear `lib/db/schema.sql` con DDL idempotente (`CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS`) de las 4 tablas:
       - `accounts` (id TEXT PK UUID v4, name, type CHECK daily/savings/investment/custom, icon DEFAULT 'wallet', hidden DEFAULT 0, created_at/updated_at)
       - `transactions` (id TEXT PK, type CHECK expense/transfer/income/adjustment, amount INTEGER, description, account_id TEXT FK → accounts(id), date, created_at/updated_at)
       - índice `idx_tx_date ON transactions(account_id, date)`
       - `budgets` (id TEXT PK DEFAULT 'default' — singleton, start_amount DEFAULT 0, start_date, end_date, auto_save DEFAULT 1, mode CHECK daily/track, is_setup DEFAULT 0)
-      - `recurring_events` (id TEXT PK, description, type CHECK income/expense, amount, frequency CHECK monthly/weekly/bimonthly/once, day_of_month, day_of_week, start_date, end_date, active DEFAULT 1, created_at/updated_at) — copiar DDL de DESIGN §"Schema SQL"
-- [ ] 1.4 Crear `lib/db/index.ts` — conexión singleton con patrón del DESIGN: `getDb()` cacheado en `globalThis.__db` (guard HMR); `DB_PATH = process.env.SQLITE_DB_PATH || path.join(process.cwd(),'data','saldo-cero.db')`; asegurar `data/` con `fs.mkdirSync(recursive)`; `journal_mode = WAL`; `foreign_keys = ON`; aplicar `schema.sql` en el primer `getDb()`; exportar `getDb`
-- [ ] 1.5 Crear `app/actions/budget.ts` ('use server') con: `loadState() → {budget, accounts (balance=SUM transactions), transactions}`, `setupBudget({startAmount,endDate,mode})` (ACID: insert budget + create income transaction + upsert daily account), `updateConfig({startAmount?,endDate?,mode?,autoSave?})` (ACID), `toggleAutoSave()`, `clearData()` (ACID — TRUNCATE 3 tablas). Dates como ISO strings; retornos JSON-serializables
-- [ ] 1.6 Crear `app/actions/transactions.ts` ('use server') con: `addTransaction → {id}` (UUID server-side), `removeTransaction(id,refund?)`, `updateTransaction`, `transferFunds({amount,from_account_id,to_account_id,description})` (ACID: INSERT expense from + INSERT income to en `db.transaction()`)
-- [ ] 1.7 Crear `app/actions/accounts.ts` ('use server') con: `addAccount → {id}`, `updateAccount({id,name,type,icon,hidden})`, `deleteAccount(id)` (ACID: si balance>0 drain a savings + DELETE account)
-- [ ] 1.8 Crear `app/actions/recurring.ts` ('use server') con: `loadRecurringEvents`, `addRecurringEvent → {id}`, `updateRecurringEvent`, `deleteRecurringEvent` (CRUD sobre `recurring_events`)
-- [ ] 1.9 Crear `app/actions/projection.ts` ('use server') con: `computeProjection(horizonDays?) → CashflowDayResult[]` (wrapper que delega en `lib/projection.ts` de Fase 3 — stub inicial que retorna `[]` o se implementa junto a Fase 3)
-- [ ] 1.10 Agregar `data/saldo-cero.db` + `data/*.db-wal` + `data/*.db-shm` a `.gitignore` (también en `data/.gitignore` si se prefiere)
-- [ ] 1.11 Verificar: `pnpm tsc --noEmit` pasa; smoke test en `pnpm dev` que `lib/db/index.ts` crea `data/saldo-cero.db` al primer `getDb()`
+      - `recurring_events` (id TEXT PK, description, type CHECK income/expense, amount, frequency CHECK monthly/weekly/bimonthly/once, day_of_month, day_of_week, start_date, end_date, active DEFAULT 1, created_at/updated_at) — copiar DDL de DESIGN §"Schema SQL" — **verificado en smoke: tablas accounts, budgets, recurring_events, transactions**
+- [x] 1.4 Crear `lib/db/index.ts` — conexión singleton con patrón del DESIGN: `getDb()` cacheado en `globalThis.__db` (guard HMR); `DB_PATH = process.env.SQLITE_DB_PATH || path.join(process.cwd(),'data','saldo-cero.db')`; asegurar `data/` con `fs.mkdirSync(recursive)`; `journal_mode = WAL`; `foreign_keys = ON`; aplicar `schema.sql` en el primer `getDb()`; exportar `getDb`
+- [x] 1.5 Crear `app/actions/budget.ts` ('use server') con: `loadState() → {budget, accounts (balance=SUM transactions), transactions}`, `setupBudget({startAmount,endDate,mode})` (ACID: insert budget + create income transaction + upsert daily account), `updateConfig({startAmount?,endDate?,mode?,autoSave?})` (ACID), `toggleAutoSave()`, `clearData()` (ACID — TRUNCATE 3 tablas). Dates como ISO strings; retornos JSON-serializables
+- [x] 1.6 Crear `app/actions/transactions.ts` ('use server') con: `addTransaction → {id}` (UUID server-side), `removeTransaction(id,refund?)`, `updateTransaction`, `transferFunds({amount,from_account_id,to_account_id,description})` (ACID: INSERT expense from + INSERT income to en `db.transaction()`)
+- [x] 1.7 Crear `app/actions/accounts.ts` ('use server') con: `addAccount → {id}`, `updateAccount({id,name,type,icon,hidden})`, `deleteAccount(id)` (ACID: si balance>0 drain a savings + DELETE account)
+- [x] 1.8 Crear `app/actions/recurring.ts` ('use server') con: `loadRecurringEvents`, `addRecurringEvent → {id}`, `updateRecurringEvent`, `deleteRecurringEvent` (CRUD sobre `recurring_events`)
+- [x] 1.9 Crear `app/actions/projection.ts` ('use server') con: `computeProjection(horizonDays?) → CashflowDayResult[]` (wrapper que delega en `lib/projection.ts` de Fase 3 — stub inicial que retorna `[]` o se implementa junto a Fase 3)
+- [x] 1.10 Agregar `data/saldo-cero.db` + `data/*.db-wal` + `data/*.db-shm` a `.gitignore` (también en `data/.gitignore` si se prefiere)
+- [x] 1.11 Verificar: `pnpm tsc --noEmit` pasa; smoke test en `pnpm dev` que `lib/db/index.ts` crea `data/saldo-cero.db` al primer `getDb()` — **tsc limpio + dev server 200 + getDb crea/schema tablas con `SQLITE_DB_PATH` temporal + singleton confirmado**
 
 ## Fase 2: Migración localStorage → SQLite (1 día)
 
-- [ ] 2.1 Crear `lib/migrate-localstorage.ts` idempotente según DESIGN + migración §"Estrategia de datos":
+- [x] 2.1 Crear `lib/migrate-localstorage.ts` idempotente según DESIGN + migración §"Estrategia de datos":
       - Guard 1: si no existe `localStorage['daily-budget-data']` → return
       - Guard 2: si `accounts` tiene filas → return (ya migrado)
       - Dentro de `db.transaction()`: seed cuentas default con UUIDs estables (`uuid v5`, namespace fijo `3f8e4a12-...`), build slug→UUID map, insertar cuentas custom preservando name/type/icon/hidden (sin balance como autoridad), re-mapear `transactions.account` → `account_id` (`ON CONFLICT DO NOTHING`), insertar `budgets` singleton (`ON CONFLICT DO NOTHING`), calcular balance inicial como transacción `adjustment` cuando no hay historial
       - Marcar `localStorage['daily-budget-data-migrated']='true'`; NO eliminar `daily-budget-data` (backup histórico)
-- [ ] 2.2 Integrar migración en el flujo de carga: ejecutar `migrateFromLocalStorage()` (idempotente) antes del primer `loadState()` en `hooks/use-budget.tsx` (ver DESIGN §"Flujo de datos completo")
-- [ ] 2.3 Refactorizar `hooks/use-budget.tsx` (747 líneas → ~200) manteniendo **API pública idéntica** (12 valores/funciones): carga inicial vía `loadState()`; split en `hooks/use-budget-derivation.ts` (`useMemo`: dailyAllowance, remainingToday, progress, lastCheckedDay) y `hooks/use-budget-actions.ts` (wrappers Server Action con optimistic update + rollback + debounce 300ms para edits per-keystroke, ver D10)
-- [ ] 2.4 Asegurar `DEFAULT_ACCOUNT_TYPES = ['daily','savings','investment']` (no slugs hardcodeados como ids) — resolver cuentas por `type`, nunca `account.id === 'daily'` (riesgo del DESIGN)
-- [ ] 2.5 Unit + integration tests migración: idempotencia (re-ejecutar no duplica), re-mapeo slug→UUID, cuentas custom preservadas, backup localStorage intacto — con jsdom + DB temporal via `SQLITE_DB_PATH`
+- [x] 2.2 Integrar migración en el flujo de carga: ejecutar `migrateFromLocalStorage()` (idempotente) antes del primer `loadState()` en `hooks/use-budget.tsx` — **verificado en test: se llama una sola vez antes del primer load**
+- [x] 2.3 Refactorizar `hooks/use-budget.tsx` (747 líneas → ~200) manteniendo **API pública idéntica** (12 valores/funciones): carga inicial vía `loadState()`; split en `hooks/use-budget-derivation.ts` (`useMemo`: dailyAllowance, remainingToday, progress, lastCheckedDay) y `hooks/use-budget-actions.ts` (wrappers Server Action con optimistic update + rollback + debounce 300ms para edits per-keystroke, ver D10) — **commits 05c8280 + a72eed4**
+- [x] 2.4 Asegurar `DEFAULT_ACCOUNT_TYPES = ['daily','savings','investment']` (no slugs hardcodeados como ids) — resolver cuentas por `type`, nunca `account.id === 'daily'` — **`isDefaultAccountType` en use-budget-derivation.ts**
+- [x] 2.5 Unit + integration tests migración: idempotencia (re-ejecutar no duplica), re-mapeo slug→UUID, cuentas custom preservadas, backup localStorage intacto — con jsdom + DB temporal via `SQLITE_DB_PATH` — **tests/unit/migrate-localstorage.test.ts (9 tests); destapó y corrigió bug: cuentas custom recibían id NULL y sus transacciones se descartaban**
 
 ## Fase 3: Recurring Events + Proyección nativa (1.5 días)
 
