@@ -1,63 +1,54 @@
 import { test, expect } from '@playwright/test'
 
+// El tema inicial es determinístico: ThemeProvider usa defaultTheme="dark",
+// así que el server renderiza dark y el cliente hidrata igual.
 test.describe('Theme Toggle', () => {
   test('should toggle between light and dark modes without hydration mismatches', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
 
-    // Wait for the page to load and check initial theme
-    await page.waitForSelector('html')
-
-    // Check initial theme is dark (default)
     const html = page.locator('html')
+
+    // Initial theme: dark (defaultTheme del ThemeProvider)
     await expect(html).toHaveClass(/dark/)
 
-    // Find the theme toggle button
-    const themeButton = page.locator('button[title*="Mode"]')
+    // Theme toggle button (data-testid, no depende del idioma)
+    const themeButton = page.getByTestId('theme-toggle')
     await expect(themeButton).toBeVisible()
 
     // Click to toggle to light mode
     await themeButton.click()
-
-    // Check that theme changed to light
     await expect(html).toHaveClass(/light/)
 
     // Click again to toggle back to dark
     await themeButton.click()
-
-    // Check that theme changed back to dark
     await expect(html).toHaveClass(/dark/)
   })
 
   test('should maintain theme state across page reloads', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
+
+    const html = page.locator('html')
+    const themeButton = page.getByTestId('theme-toggle')
 
     // Toggle to light mode
-    const themeButton = page.locator('button[title*="Mode"]')
     await themeButton.click()
-
-    // Verify light mode
-    const html = page.locator('html')
     await expect(html).toHaveClass(/light/)
 
-    // Reload the page
+    // Reload: next-themes persiste en localStorage (storageKey="theme")
     await page.reload()
-
-    // Check that theme persists
     await expect(html).toHaveClass(/light/)
   })
 
   test('should show correct icon for current theme', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
 
-    const themeButton = page.locator('button[title*="Mode"]')
+    const themeButton = page.getByTestId('theme-toggle')
 
-    // In dark mode, should show Sun icon (for switching to light)
-    await expect(page.locator('button svg').first()).toBeVisible()
+    // En dark mode, muestra icono de sun (acción: pasar a light)
+    await expect(themeButton.locator('svg.lucide-sun')).toBeVisible()
 
-    // Toggle to light
+    // Toggle a light: muestra moon (acción: pasar a dark)
     await themeButton.click()
-
-    // In light mode, should show Moon icon (for switching to dark)
-    await expect(page.locator('button svg').first()).toBeVisible()
+    await expect(themeButton.locator('svg.lucide-moon')).toBeVisible()
   })
 })

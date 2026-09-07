@@ -152,6 +152,12 @@ export const translations = {
     missingInformationDescription: 'Please complete all fields',
     configUpdated: 'Budget Updated',
     configUpdatedDescription: 'Your settings were saved.',
+    noAccounts: 'No accounts available',
+    noAccountsDescription: 'Please add accounts before making transfers.',
+    insufficientAccounts: 'Need more accounts',
+    insufficientAccountsDescription: 'You need at least 2 accounts to make transfers.',
+    transferSuccess: 'Transfer Complete',
+    transferSuccessDescription: '{amount} moved successfully.',
 
     // Date picker
     pickDate: 'Pick a date',
@@ -326,6 +332,12 @@ export const translations = {
     missingInformationDescription: 'Completa todos los campos requeridos',
     configUpdated: 'Presupuesto actualizado',
     configUpdatedDescription: 'Los cambios se guardaron correctamente.',
+    noAccounts: 'Sin cuentas disponibles',
+    noAccountsDescription: 'Agrega cuentas antes de hacer transferencias.',
+    insufficientAccounts: 'Se necesitan al menos 2 cuentas',
+    insufficientAccountsDescription: 'Necesitas al menos 2 cuentas para transferir.',
+    transferSuccess: 'Transferencia completada',
+    transferSuccessDescription: '{amount} se transfirió correctamente.',
 
     // Date picker
     pickDate: 'Selecciona una fecha',
@@ -369,22 +381,25 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 // Create the provider
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // Get initial language from localStorage or browser language
-  const getInitialLanguage = (): Language => {
-    if (typeof window === 'undefined') return 'es' // SSR default
+  // SSR-safe: el primer render SIEMPRE es 'es' (server y client idénticos).
+  // Leer localStorage/navigator aquí rompería la hidratación (server no tiene
+  // acceso a ellos y renderizaría 'es' mientras el cliente elegiría 'en').
+  const [language, setLanguage] = useState<Language>('es')
 
-    // Check localStorage first
+  // Detección post-mount: localStorage > navigator.language > 'es'.
+  useEffect(() => {
     const stored = localStorage.getItem('language')
-    if (stored === 'en' || stored === 'es') return stored as Language
-
-    // Fallback to browser language
+    if (stored === 'en' || stored === 'es') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration: detect browser prefs post-mount
+      setLanguage(stored)
+      return
+    }
     const browserLang = navigator.language.split('-')[0].toLowerCase()
-    if (browserLang === 'en' || browserLang === 'es') return browserLang as Language
-
-    return 'es' // Final fallback
-  }
-
-  const [language, setLanguage] = useState<Language>(getInitialLanguage)
+    if (browserLang === 'en' || browserLang === 'es') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration: detect browser prefs post-mount
+      setLanguage(browserLang as Language)
+    }
+  }, [])
 
   // Effect to save language changes to localStorage
   useEffect(() => {

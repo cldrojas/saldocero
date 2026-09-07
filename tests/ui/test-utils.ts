@@ -1,7 +1,17 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-import { Page } from '@playwright/test'
+// tests/ui/test-utils.ts
+// Helpers E2E post-pivote: el seed se escribe DIRECTO en SQLite (e2e-db.ts),
+// ya no en localStorage (que quedó solo para preferencias UI como language).
+import type { Page } from '@playwright/test'
 import { addDays } from 'date-fns'
-import { toInt } from '@/types'
+import {
+  DEFAULT_E2E_STATE,
+  type E2EAppState,
+  clearDb,
+  seedDb,
+} from './e2e-db'
+
+export type TestAppState = E2EAppState
+export { DEFAULT_E2E_STATE } from './e2e-db'
 
 export interface TestBudgetConfig {
   startAmount: number
@@ -17,154 +27,74 @@ export interface TestAccountConfig {
   icon: string
 }
 
-export interface TestAppState {
-  budget: TestBudgetConfig
-  accounts: TestAccountConfig[]
-  transactions?: any[]
+export interface TestTransactionConfig {
+  id: string
+  type: string
+  amount: number
+  description: string
+  account: string
+  date: Date
+}
+
+/**
+ * Default test configuration for budget app (SQLite seed).
+ */
+export const DEFAULT_TEST_CONFIG: TestAppState = DEFAULT_E2E_STATE
+
+function toE2EState(
+  budget: TestBudgetConfig,
+  accounts: TestAccountConfig[],
+  transactions: TestTransactionConfig[] | undefined,
   isSetup: boolean
-}
-
-/**
- * Default test configuration for budget app
- */
-export const DEFAULT_TEST_CONFIG: TestAppState = {
-  budget: {
-    startAmount: 1000,
-    endDate: addDays(new Date(), 30),
-    autoSave: true
-  },
-  accounts: [
-    {
-      id: 'daily',
-      name: 'Daily Budget',
-      type: 'daily',
-      balance: 1000,
-      icon: 'wallet'
-    },
-    {
-      id: 'savings',
-      name: 'Savings',
-      type: 'savings',
-      balance: 500,
-      icon: 'piggybank'
-    },
-    {
-      id: 'investment',
-      name: 'Investment',
-      type: 'investment',
-      balance: 2000,
-      icon: 'trending-up'
-    }
-  ],
-  isSetup: true
-}
-
-/**
- * Clears all localStorage data for the app
- */
-export async function clearAppData(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    // Clear localStorage data
-    localStorage.removeItem('daily-budget-data')
-
-    // Override localStorage methods to ensure they work in test environment
-    const originalSetItem = localStorage.setItem
-    const originalGetItem = localStorage.getItem
-    const originalRemoveItem = localStorage.removeItem
-
-    localStorage.setItem = function(key, value) {
-      try {
-        return originalSetItem.call(this, key, value)
-      } catch (e) {
-        console.warn('localStorage.setItem failed:', e)
-        return undefined
-      }
-    }
-
-    localStorage.getItem = function(key) {
-      try {
-        return originalGetItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.getItem failed:', e)
-        return null
-      }
-    }
-
-    localStorage.removeItem = function(key) {
-      try {
-        return originalRemoveItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.removeItem failed:', e)
-        return undefined
-      }
-    }
-  })
-}
-
-/**
- * Sets up the app with test data by manipulating localStorage
- */
-export async function setupTestAppState(page: Page, config: TestAppState = DEFAULT_TEST_CONFIG): Promise<void> {
-  const testData = {
+): E2EAppState {
+  return {
     budget: {
-      startAmount: toInt(config.budget.startAmount),
-      startDate: new Date(),
-      endDate: config.budget.endDate || addDays(new Date(), 30),
-      autoSave: config.budget.autoSave || true
+      startAmount: budget.startAmount,
+      endDate: budget.endDate || addDays(new Date(), 30),
+      autoSave: budget.autoSave !== false,
     },
-    accounts: config.accounts.map(account => ({
-      id: account.id,
-      name: account.name,
-      type: account.type,
-      balance: toInt(account.balance),
-      icon: account.icon
+    accounts: accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance,
+      icon: a.icon,
     })),
-    transactions: config.transactions || [],
-    dailyAllowance: toInt(config.budget.startAmount / 30), // Rough daily allowance
-    remainingToday: toInt(config.budget.startAmount / 30),
-    progress: 100,
-    lastCheckedDay: new Date(),
-    isSetup: config.isSetup,
-    autoSave: config.budget.autoSave || true
+    transactions: transactions?.map((t) => ({
+      id: t.id,
+      type: t.type,
+      amount: t.amount,
+      description: t.description,
+      account: t.account,
+      date: t.date,
+    })),
+    isSetup,
   }
+}
 
-  // Use addInitScript to set localStorage before page loads
-  await page.addInitScript((data) => {
-    // Set localStorage data
-    localStorage.setItem('daily-budget-data', JSON.stringify(data))
+/**
+ * Clears ALL app data: la DB de test se vacía (source of truth financiera)
+ * y el estado de la UI se deja sin sesión previa.
+ */
+export async function clearAppData(_page: Page): Promise<void> {
+  clearDb()
+}
 
-    // Override localStorage methods to ensure they work in test environment
-    const originalSetItem = localStorage.setItem
-    const originalGetItem = localStorage.getItem
-    const originalRemoveItem = localStorage.removeItem
-
-    localStorage.setItem = function(key, value) {
-      try {
-        return originalSetItem.call(this, key, value)
-      } catch (e) {
-        console.warn('localStorage.setItem failed:', e)
-        return undefined
-      }
-    }
-
-    localStorage.getItem = function(key) {
-      try {
-        return originalGetItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.getItem failed:', e)
-        return null
-      }
-    }
-
-    localStorage.removeItem = function(key) {
-      try {
-        return originalRemoveItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.removeItem failed:', e)
-        return undefined
-      }
-    }
-  }, testData)
+/**
+ * Seeds la app con datos de prueba escribiendo directamente en SQLite.
+ * Los tests no dependen de localStorage para datos de dominio.
+ */
+export async function setupTestAppState(
+  _page: Page,
+  config: Partial<TestAppState> = {}
+): Promise<void> {
+  const full: TestAppState = {
+    budget: config.budget ?? DEFAULT_TEST_CONFIG.budget,
+    accounts: config.accounts ?? DEFAULT_TEST_CONFIG.accounts,
+    transactions: config.transactions,
+    isSetup: config.isSetup ?? DEFAULT_TEST_CONFIG.isSetup,
+  }
+  seedDb(toE2EState(full.budget, full.accounts, full.transactions, full.isSetup))
 }
 
 /**
@@ -184,7 +114,7 @@ export async function waitForAppReady(page: Page): Promise<void> {
  */
 export async function ensureSetupState(page: Page): Promise<void> {
   await clearAppData(page)
-  await page.reload()
+  await page.goto('/')
   await waitForAppReady(page)
 
   // Verify we're in setup state
@@ -194,9 +124,12 @@ export async function ensureSetupState(page: Page): Promise<void> {
 /**
  * Ensures the app is in a configured state with test data
  */
-export async function ensureConfiguredState(page: Page, config: TestAppState = DEFAULT_TEST_CONFIG): Promise<void> {
+export async function ensureConfiguredState(
+  page: Page,
+  config: Partial<TestAppState> = {}
+): Promise<void> {
   await setupTestAppState(page, config)
-  await page.reload()
+  await page.goto('/')
   await waitForAppReady(page)
 
   // Verify we're in configured state (should see main app content)
@@ -204,13 +137,29 @@ export async function ensureConfiguredState(page: Page, config: TestAppState = D
 }
 
 /**
- * Gets current app state from localStorage
+ * Gets current app state from SQLite (via the same file the server uses).
+ * Retorna el estado persistido en la DB de test.
  */
-export async function getCurrentAppState(page: Page): Promise<any> {
-  return await page.evaluate(() => {
-    const data = localStorage.getItem('daily-budget-data')
-    return data ? JSON.parse(data) : null
-  })
+export async function getCurrentAppState(_page: Page): Promise<any> {
+  // La DB se lee desde el proceso del test (misma ruta que el webServer).
+  // Switchea según necesidad; para lectura simple, se exporta desde e2e-db.
+  const { E2E_DB_PATH } = await import('./e2e-db')
+  const Database = (await import('better-sqlite3')).default
+  const db = new Database(E2E_DB_PATH)
+  try {
+    const budget = db.prepare(`SELECT * FROM budgets WHERE id = 'default'`).get()
+    const accounts = db.prepare(
+      `SELECT a.*, COALESCE(SUM(t.amount), 0) AS balance
+       FROM accounts a
+       LEFT JOIN transactions t ON t.account_id = a.id
+       GROUP BY a.id
+       ORDER BY a.type`
+    ).all()
+    const transactions = db.prepare(`SELECT * FROM transactions ORDER BY date DESC`).all()
+    return { budget, accounts, transactions }
+  } finally {
+    db.close()
+  }
 }
 
 /**

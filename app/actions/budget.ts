@@ -66,9 +66,15 @@ export async function loadState() {
     updated_at: new Date().toISOString()
   }
 
-  // Cargar accounts
+  // Cargar accounts con balance derivado de SUM(transactions).
+  // El balance nunca es una columna: se computa con LEFT JOIN + GROUP BY,
+  // de lo contrario `acc.balance` queda undefined y toda la UI muestra 0.
   const accountsRows = db.prepare(
-    `SELECT * FROM accounts ORDER BY type`
+    `SELECT a.*, COALESCE(SUM(t.amount), 0) AS balance
+     FROM accounts a
+     LEFT JOIN transactions t ON t.account_id = a.id
+     GROUP BY a.id
+     ORDER BY a.type`
   ).all() as AccountRow[]
 
   const accounts = accountsRows.map((acc) => ({

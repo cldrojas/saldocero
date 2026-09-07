@@ -1,15 +1,18 @@
 import { test, expect } from '@playwright/test'
 
+const themeButton = (page: import('@playwright/test').Page) => page.getByTestId('theme-toggle')
+
 test.describe('Language Selector', () => {
   test('should switch languages correctly without hydration errors', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
 
     // Wait for the page to load
     await page.waitForSelector('h1')
 
-    // Check initial language - should be Spanish by default or detected
+    // Check initial language - Spanish default (locale es-ES en config)
     const appName = page.locator('h1')
     const initialText = await appName.textContent()
+    expect(['Saldo Cero', 'Saldo Cero']).toContain(initialText?.trim())
 
     // Find the language selector button
     const languageButton = page.locator('button:has(svg)').first() // Globe icon
@@ -24,16 +27,16 @@ test.describe('Language Selector', () => {
     // Check that app name changed to English
     await expect(appName).toHaveText('Saldo Cero') // App name is same in both
 
-    // Check that some translated text changed - look for "Modo Oscuro" or "Dark Mode"
-    const themeButton = page.locator('button[title*="Mode"]')
-    await expect(themeButton).toHaveAttribute('title', 'Dark Mode')
+    // Check that some translated text changed - theme toggle title
+    // En dark mode inicial: title = t("lightMode")
+    await expect(themeButton(page)).toHaveAttribute('title', 'Light Mode')
 
     // Switch back to Spanish
     await languageButton.click()
     await page.locator('text=Español').click()
 
     // Check that title changed back
-    await expect(themeButton).toHaveAttribute('title', 'Modo Oscuro')
+    await expect(themeButton(page)).toHaveAttribute('title', 'Modo Claro')
   })
 
   test('should detect initial language properly', async ({ page }) => {
@@ -42,17 +45,15 @@ test.describe('Language Selector', () => {
       localStorage.clear()
     })
 
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
 
-    // Since no localStorage, it should detect browser language or default to 'es'
-    // Assuming browser is English, but default is 'es', so check for Spanish
-    const themeButton = page.locator('button[title*="Mode"]')
-    const title = await themeButton.getAttribute('title')
-    expect(title).toBe('Modo Oscuro') // Spanish
+    // Sin localStorage, el idioma inicial es 'es' (locale es-ES en config).
+    // En dark mode inicial, el título del theme toggle usa t("lightMode").
+    await expect(themeButton(page)).toHaveAttribute('title', 'Modo Claro')
   })
 
   test('should persist language selection across reloads', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
 
     // Switch to English
     const languageButton = page.locator('button:has(svg)').first()
@@ -60,18 +61,17 @@ test.describe('Language Selector', () => {
     await page.locator('text=English').click()
 
     // Verify English
-    const themeButton = page.locator('button[title*="Mode"]')
-    await expect(themeButton).toHaveAttribute('title', 'Dark Mode')
+    await expect(themeButton(page)).toHaveAttribute('title', 'Light Mode')
 
     // Reload page
     await page.reload()
 
     // Check that language persists
-    await expect(themeButton).toHaveAttribute('title', 'Dark Mode')
+    await expect(themeButton(page)).toHaveAttribute('title', 'Light Mode')
   })
 
   test('should show current language in selector button', async ({ page }) => {
-    await page.goto('http://localhost:3000')
+    await page.goto('/')
 
     const languageButton = page.locator('button:has(svg)').first()
 

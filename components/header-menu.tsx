@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Menu, Sun, Moon, Globe, CreditCard, Settings, ArrowLeft } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -34,9 +34,15 @@ type SheetView = "menu" | "settings"
 export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<SheetView>("menu")
+  const [mounted, setMounted] = useState(false)
   const { theme, setTheme, resolvedTheme } = useTheme()
   const { t, language, setLanguage } = useLanguage()
   const { currency, setCurrency } = useCurrency()
+
+  // SSR-safe: next-themes no resuelve el tema real (system) hasta el cliente.
+  // Renderizar el botón con el theme del server causaría hydration mismatch.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydration guard: must defer to client
+  useEffect(() => setMounted(true), [])
 
   const isDarkMode = (theme || resolvedTheme) === "dark"
 
@@ -57,13 +63,19 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
         <Button
           variant="ghost"
           size="icon"
+          data-testid="theme-toggle"
           onClick={() => setTheme(isDarkMode ? "light" : "dark")}
-          title={isDarkMode ? t("lightMode") : t("darkMode")}
+          title={mounted ? (isDarkMode ? t("lightMode") : t("darkMode")) : undefined}
+          aria-label={mounted ? (isDarkMode ? t("lightMode") : t("darkMode")) : undefined}
         >
-          {isDarkMode ? (
-            <Sun className="h-5 w-5" />
+          {mounted ? (
+            isDarkMode ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )
           ) : (
-            <Moon className="h-5 w-5" />
+            <Sun className="h-5 w-5" />
           )}
         </Button>
       </div>

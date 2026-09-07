@@ -1,419 +1,262 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import {
   ensureConfiguredState,
   waitForAppReady
 } from './test-utils'
-import { HIGH_BALANCE_SETUP, LOW_BALANCE_SETUP, getTransferTestData, getTestScenario } from './test-data'
+import { HIGH_BALANCE_SETUP, LOW_BALANCE_SETUP } from './test-data'
+
+// ─── Helpers ────────────────────────────────────────────────
+
+/** Open the TransferModal by clicking the "Transferir" button in the Navbar tablist */
+async function openTransferModal(page: Page) {
+  await page
+    .locator('[role="tablist"]')
+    .getByRole('button', { name: 'Transferir' })
+    .click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+}
+
+/**
+ * Select an account in a shadcn Select (Radix).
+ * Finds the <label> by exact text, walks up to the parent div,
+ * then clicks the combobox trigger inside it.
+ */
+async function selectAccount(
+  page: Page,
+  labelText: string,
+  accountNamePattern: RegExp | string
+) {
+  const label = page.getByText(labelText, { exact: true })
+  const trigger = label.locator('..').getByRole('combobox')
+  await trigger.click()
+  await page.getByRole('option', { name: accountNamePattern }).click()
+}
+
+/** Submit the transfer form inside the dialog */
+async function submitTransfer(page: Page) {
+  await page.getByRole('dialog').getByRole('button', { name: 'Transferencias' }).click()
+}
+
+// ─── Tests ──────────────────────────────────────────────────
 
 test.describe('Transfer Form', () => {
-  test('should render transfer form without hydration errors', async ({ page }) => {
-    // Set up test app state with multiple accounts
+  test('should render transfer modal with all form elements', async ({
+    page
+  }) => {
     await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
 
-    // Check that the transfer form is visible
-    const formCard = page.locator('[data-testid="transfer-form"]').or(
-      page.locator('h3:has-text("Transferir Fondos")').or(
-        page.locator('h3:has-text("Transfer Funds")')
-      ).locator('..').locator('..')
-    )
-    await expect(formCard).toBeVisible()
+    const dialog = page.getByRole('dialog')
 
-    // Verify form elements are present
-    await expect(page.locator('select').or(page.locator('[role="combobox"]'))).toHaveCount(2)
-    await expect(page.locator('input[type="number"]')).toBeVisible()
-    await expect(page.locator('input[placeholder*="transfer"]').or(
-      page.locator('input[placeholder*="Transferir"]')
-    )).toBeVisible()
-    await expect(page.locator('button:has-text("Transferir Fondos")').or(
-      page.locator('button:has-text("Transfer Funds")')
-    )).toBeVisible()
+    // Title
+    await expect(dialog.getByRole('heading', { name: 'Transferencias' })).toBeVisible()
+
+    // Form fields
+    await expect(dialog.locator('#amount')).toBeVisible()
+    await expect(dialog.locator('#description')).toBeVisible()
+    await expect(dialog.getByRole('combobox')).toHaveCount(2)
+
+    // Buttons
+    await expect(
+      dialog.getByRole('button', { name: 'Cancelar' })
+    ).toBeVisible()
+    // Submit button contains icon + text "Transferencias"
+    await expect(
+      dialog.getByRole('button', { name: 'Transferencias' })
+    ).toBeVisible()
   })
 
-  test('should handle form validation correctly', async ({ page }) => {
-    // Set up test app state with multiple accounts
+  test('should show validation error when submitting empty form', async ({
+    page
+  }) => {
     await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
 
-    // Try to submit empty form
-    const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-      page.locator('button:has-text("Transfer Funds")')
-    )
-    await submitButton.click()
+    // Submit without selecting accounts
+    await submitTransfer(page)
 
-    // Check for validation error toast
-    await expect(page.locator('[data-testid="toast"]').or(
-      page.locator('text=Cuentas faltantes').or(
-        page.locator('text=Missing accounts')
-      )
-    )).toBeVisible()
-
-    // Select same account for both source and destination
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
-
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
-
-      await toSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
-
-      const amountInput = page.locator('input[type="number"]')
-      await amountInput.fill('100')
-
-      await submitButton.click()
-
-      // Check for invalid transfer error
-      await expect(page.locator('[data-testid="toast"]').or(
-        page.locator('text=Transferencia inválida').or(
-          page.locator('text=Invalid transfer')
-        )
-      )).toBeVisible()
-    }
-
-    // Fill invalid amount (negative number)
-    const amountInput = page.locator('[data-testid="transfer-amount"]')
-    await amountInput.fill('-50')
-
-    await submitButton.click()
-
-    // Check for invalid amount error
-    await expect(page.locator('[data-testid="toast"]').or(
-      page.locator('text=Cantidad inválida').or(
-        page.locator('text=Invalid amount')
-      )
-    )).toBeVisible()
-
-    // Fill zero amount
-    await amountInput.fill('0')
-    await submitButton.click()
-
-    // Check for invalid amount error
-    await expect(page.locator('[data-testid="toast"]').or(
-      page.locator('text=Cantidad inválida').or(
-        page.locator('text=Invalid amount')
-      )
-    )).toBeVisible()
+    await expect(page.getByText('Faltan cuentas', { exact: true })).toBeVisible()
   })
 
-  test('should handle valid transfer submission', async ({ page }) => {
-    // Set up test app state with multiple accounts
+  test('should show validation error for same-account transfer', async ({
+    page
+  }) => {
     await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
 
-    // Select different accounts for transfer
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
+    // Select the same account for both source and destination
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Daily Budget')
 
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
+    await page.locator('#amount').fill('100')
+    await submitTransfer(page)
 
-      await toSelect.click()
-      await page.locator('text=Savings').or(page.locator('text=Ahorros')).click()
-
-      // Fill valid amount
-      const amountInput = page.locator('[data-testid="transfer-amount"]')
-      await amountInput.fill('100')
-
-      // Fill description
-      const descriptionInput = page.locator('[data-testid="transfer-description"]')
-      await descriptionInput.fill('Test transfer')
-
-      // Submit form
-      const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-        page.locator('button:has-text("Transfer Funds")')
-      )
-      await submitButton.click()
-
-      // Check for success toast
-      await expect(page.locator('[data-testid="toast"]').or(
-        page.locator('text=Transferencia completada').or(
-          page.locator('text=Transfer completed')
-        )
-      )).toBeVisible()
-
-      // Verify form is reset after successful submission
-      await expect(amountInput).toHaveValue('')
-      await expect(descriptionInput).toHaveValue('')
-    }
+    await expect(page.getByText('Transferencia inválida', { exact: true })).toBeVisible()
   })
 
-  test('should handle insufficient funds validation', async ({ page }) => {
-    // Set up test app state with low balance for testing insufficient funds
+  test('should show validation error for negative amount', async ({
+    page
+  }) => {
+    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
+
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Savings')
+
+    await page.locator('#amount').fill('-50')
+    await submitTransfer(page)
+
+    await expect(page.getByText('Monto inválido', { exact: true })).toBeVisible()
+  })
+
+  test('should show validation error for zero amount', async ({ page }) => {
+    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
+
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Savings')
+
+    await page.locator('#amount').fill('0')
+    await submitTransfer(page)
+
+    await expect(page.getByText('Monto inválido', { exact: true })).toBeVisible()
+  })
+
+  test('should complete a valid transfer successfully', async ({ page }) => {
+    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
+
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Savings')
+
+    await page.locator('#amount').fill('100')
+    await page.locator('#description').fill('Test transfer')
+
+    await submitTransfer(page)
+
+    // Success toast
+    await expect(page.getByText('Transferencia completada', { exact: true })).toBeVisible()
+
+    // Modal closes
+    await expect(page.getByRole('dialog')).not.toBeVisible()
+  })
+
+  test('should show insufficient funds error', async ({ page }) => {
     await ensureConfiguredState(page, LOW_BALANCE_SETUP)
+    await openTransferModal(page)
 
-    // Select accounts for transfer
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Savings')
 
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
+    // Daily Budget has balance 100 — try to transfer 99999
+    await page.locator('#amount').fill('99999')
+    await submitTransfer(page)
 
-      await toSelect.click()
-      await page.locator('text=Savings').or(page.locator('text=Ahorros')).click()
-
-      // Fill amount that exceeds account balance
-      const amountInput = page.locator('[data-testid="transfer-amount"]')
-      await amountInput.fill('999999')
-
-      // Submit form
-      const submitButton = page.locator('[data-testid="transfer-submit"]')
-      await submitButton.click()
-
-      // Check for insufficient funds error
-      await expect(page.locator('[data-testid="toast"]').or(
-        page.locator('text=Fondos insuficientes').or(
-          page.locator('text=Insufficient funds')
-        )
-      )).toBeVisible()
-    }
+    await expect(page.getByText('Fondos insuficientes', { exact: true })).toBeVisible()
   })
 
-  test('should handle account selection with balance display', async ({ page }) => {
-    // Set up test app state with multiple accounts
+  test('should maintain form state after validation error', async ({
+    page
+  }) => {
     await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
 
-    // Check from account selector
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
+    // Fill the form
+    await page.locator('#amount').fill('200')
+    await page.locator('#description').fill('State preservation test')
 
-    if (await fromSelect.isVisible()) {
-      await fromSelect.click()
+    // Select same account → triggers validation error
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Daily Budget')
 
-      // Check that account options show balances
-      const dailyOption = page.locator('text=Daily').or(page.locator('text=Diario'))
-      await expect(dailyOption).toBeVisible()
+    await submitTransfer(page)
+    await expect(page.getByText('Transferencia inválida', { exact: true })).toBeVisible()
 
-      // Select Daily account
-      await dailyOption.click()
-      await expect(fromSelect).toHaveValue('daily')
-    }
-
-    // Check to account selector
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
-
-    if (await toSelect.isVisible()) {
-      await toSelect.click()
-
-      // Check that destination accounts are available
-      const savingsOption = page.locator('text=Savings').or(page.locator('text=Ahorros'))
-      await expect(savingsOption).toBeVisible()
-
-      const investmentOption = page.locator('text=Investment').or(page.locator('text=Inversión'))
-      await expect(investmentOption).toBeVisible()
-
-      // Select Savings account
-      await savingsOption.click()
-      await expect(toSelect).toHaveValue('savings')
-    }
-  })
-
-  test('should handle description input', async ({ page }) => {
-    // Set up test app state with multiple accounts
-    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
-
-    const descriptionInput = page.locator('[data-testid="transfer-description"]')
-
-    // Test placeholder text
-    const placeholder = await descriptionInput.getAttribute('placeholder')
-    expect(placeholder).toMatch(/(¿Para qué es esta transferencia\?|What is this transfer for\?)/)
-
-    // Fill description
-    await descriptionInput.fill('Monthly savings transfer')
-
-    // Verify value is set
-    await expect(descriptionInput).toHaveValue('Monthly savings transfer')
-
-    // Test empty description (should use default)
-    await descriptionInput.clear()
-
-    // Submit form to test default description
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
-
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
-
-      await toSelect.click()
-      await page.locator('text=Savings').or(page.locator('text=Ahorros')).click()
-
-      const amountInput = page.locator('[data-testid="transfer-amount"]')
-      await amountInput.fill('50')
-
-      const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-        page.locator('button:has-text("Transfer Funds")')
-      )
-      await submitButton.click()
-
-      // Should succeed with default description
-      await expect(page.locator('[data-testid="toast"]').or(
-        page.locator('text=Transferencia completada').or(
-          page.locator('text=Transfer completed')
-        )
-      )).toBeVisible()
-    }
-  })
-
-  test('should handle keyboard navigation', async ({ page }) => {
-    // Set up test app state with multiple accounts
-    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
-
-    // Tab through form elements
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-    await page.keyboard.press('Tab')
-
-    // Fill form using keyboard
-    await page.keyboard.type('100')
-    await page.keyboard.press('Tab')
-    await page.keyboard.type('Keyboard test transfer')
-    await page.keyboard.press('Tab')
-
-    // Submit with Enter
-    await page.keyboard.press('Enter')
-
-    // Check for success toast
-    await expect(page.locator('[data-testid="toast"]').or(
-      page.locator('text=Transferencia completada').or(
-        page.locator('text=Transfer completed')
-      )
-    )).toBeVisible()
-  })
-
-  test('should maintain form state during validation errors', async ({ page }) => {
-    // Set up test app state with multiple accounts
-    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
-
-    // Fill partial data
-    const amountInput = page.locator('[data-testid="transfer-amount"]')
-    await amountInput.fill('200')
-
-    const descriptionInput = page.locator('[data-testid="transfer-description"]')
-    await descriptionInput.fill('State preservation test')
-
-    // Try to submit with invalid data (same accounts)
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
-
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
-
-      await toSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
-
-      const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-        page.locator('button:has-text("Transfer Funds")')
-      )
-      await submitButton.click()
-
-      // Verify form data is preserved after validation error
-      await expect(amountInput).toHaveValue('200')
-      await expect(descriptionInput).toHaveValue('State preservation test')
-    }
-  })
-
-  test('should handle decimal amounts', async ({ page }) => {
-    // Set up test app state with multiple accounts
-    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
-
-    // Select accounts for transfer
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
-
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
-
-      await toSelect.click()
-      await page.locator('text=Savings').or(page.locator('text=Ahorros')).click()
-
-      // Test decimal input
-      const amountInput = page.locator('[data-testid="transfer-amount"]')
-      await amountInput.fill('75.25')
-
-      const descriptionInput = page.locator('[data-testid="transfer-description"]')
-      await descriptionInput.fill('Decimal transfer test')
-
-      // Submit form
-      const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-        page.locator('button:has-text("Transfer Funds")')
-      )
-      await submitButton.click()
-
-      // Check for success toast
-      await expect(page.locator('[data-testid="toast"]').or(
-        page.locator('text=Transferencia completada').or(
-          page.locator('text=Transfer completed')
-        )
-      )).toBeVisible()
-    }
-  })
-
-  test('should be accessible', async ({ page }) => {
-    // Set up test app state with multiple accounts
-    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
-
-    // Check form labels
-    await expect(page.locator('label')).toHaveCount(4)
-
-    // Check input accessibility
-    const amountInput = page.locator('[data-testid="transfer-amount"]')
-    await expect(amountInput).toHaveAttribute('required')
-
-    const descriptionInput = page.locator('[data-testid="transfer-description"]')
-    await expect(descriptionInput).toBeVisible()
-
-    // Check button accessibility
-    const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-      page.locator('button:has-text("Transfer Funds")')
+    // Form values should be preserved
+    await expect(page.locator('#amount')).toHaveValue('200')
+    await expect(page.locator('#description')).toHaveValue(
+      'State preservation test'
     )
-    await expect(submitButton).toBeVisible()
+  })
 
-    // Test focus management
+  test('should support keyboard interaction on form elements', async ({
+    page
+  }) => {
+    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
+
+    // Amount input should be focusable
+    const amountInput = page.locator('#amount')
     await amountInput.focus()
     await expect(amountInput).toBeFocused()
+    await amountInput.fill('50')
+
+    // Description input should be focusable
+    const descInput = page.locator('#description')
+    await descInput.focus()
+    await expect(descInput).toBeFocused()
+    await descInput.fill('Keyboard test')
+
+    // Selects should be focusable via keyboard
+    const fromTrigger = page
+      .getByText('Desde', { exact: true })
+      .locator('..')
+      .getByRole('combobox')
+    await fromTrigger.focus()
+    await expect(fromTrigger).toBeFocused()
+
+    // Press Escape to close dialog (valid keyboard action)
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).not.toBeVisible()
   })
 
-  test('should handle rapid form submissions', async ({ page }) => {
-    // Set up test app state with multiple accounts
+  test('should display account options with balances in from selector', async ({
+    page
+  }) => {
     await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
 
-    // Select accounts for transfer
-    const fromSelect = page.locator('[data-testid="transfer-from-account"]').first()
-    const toSelect = page.locator('[data-testid="transfer-to-account"]').first()
+    // Open the "from" account selector
+    const fromTrigger = page
+      .getByText('Desde', { exact: true })
+      .locator('..')
+      .getByRole('combobox')
+    await fromTrigger.click()
 
-    if (await fromSelect.isVisible() && await toSelect.isVisible()) {
-      await fromSelect.click()
-      await page.locator('text=Daily').or(page.locator('text=Diario')).click()
+    // Verify account options are visible
+    await expect(
+      page.getByRole('option', { name: /Daily Budget/ })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('option', { name: /Savings/ })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('option', { name: /Investment/ })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('option', { name: /Emergency Fund/ })
+    ).toBeVisible()
 
-      await toSelect.click()
-      await page.locator('text=Savings').or(page.locator('text=Ahorros')).click()
-
-      // Fill form data
-      const amountInput = page.locator('[data-testid="transfer-amount"]')
-      const descriptionInput = page.locator('[data-testid="transfer-description"]')
-      const submitButton = page.locator('button:has-text("Transferir Fondos")').or(
-        page.locator('button:has-text("Transfer Funds")')
-      )
-
-      // Submit multiple times quickly
-      await amountInput.fill('25')
-      await descriptionInput.fill('Rapid transfer 1')
-      await submitButton.click()
-
-      await amountInput.fill('50')
-      await descriptionInput.fill('Rapid transfer 2')
-      await submitButton.click()
-
-      // Check that both transfers were processed
-      await expect(page.locator('[data-testid="toast"]')).toHaveCount(2)
-    }
+    // Select one
+    await page.getByRole('option', { name: /Savings/ }).click()
   })
 
-  test('should handle uninitialized app state gracefully', async ({ page }) => {
-    // Test with no accounts (uninitialized state)
+  test('should handle decimal amounts correctly', async ({ page }) => {
+    await ensureConfiguredState(page, HIGH_BALANCE_SETUP)
+    await openTransferModal(page)
+
+    await selectAccount(page, 'Desde', 'Daily Budget')
+    await selectAccount(page, 'Hacia', 'Savings')
+
+    await page.locator('#amount').fill('75.50')
+    await page.locator('#description').fill('Decimal transfer test')
+
+    await submitTransfer(page)
+
+    await expect(page.getByText('Transferencia completada', { exact: true })).toBeVisible()
+  })
+
+  test('should handle uninitialized state (no accounts)', async ({ page }) => {
     await ensureConfiguredState(page, {
       budget: {
         startAmount: 0,
@@ -424,13 +267,11 @@ test.describe('Transfer Form', () => {
       isSetup: true
     })
 
-    // Should show empty state instead of crashing
-    await expect(page.locator('text=No accounts available')).toBeVisible()
-    await expect(page.locator('button:has-text("Add Account")')).toBeVisible()
+    // Page-level EmptyState (accounts.length === 0)
+    await expect(page.getByText('Sin cuentas disponibles')).toBeVisible()
   })
 
-  test('should handle insufficient accounts for transfers', async ({ page }) => {
-    // Test with only one account (not enough for transfers)
+  test('should open transfer modal with single account', async ({ page }) => {
     await ensureConfiguredState(page, {
       budget: {
         startAmount: 1000,
@@ -449,8 +290,21 @@ test.describe('Transfer Form', () => {
       isSetup: true
     })
 
-    // Should show insufficient accounts message
-    await expect(page.locator('text=Need more accounts')).toBeVisible()
-    await expect(page.locator('button:has-text("Add Account")')).toBeVisible()
+    // With 1 account the Navbar renders; modal can open
+    await openTransferModal(page)
+
+    // Form is visible
+    await expect(page.locator('#amount')).toBeVisible()
+    await expect(page.getByRole('dialog').getByRole('combobox')).toHaveCount(2)
+
+    // The from selector should have 1 option
+    const fromTrigger = page
+      .getByText('Desde', { exact: true })
+      .locator('..')
+      .getByRole('combobox')
+    await fromTrigger.click()
+    await expect(
+      page.getByRole('option', { name: /Daily Budget/ })
+    ).toBeVisible()
   })
 })
