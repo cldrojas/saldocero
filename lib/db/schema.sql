@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   icon TEXT NOT NULL DEFAULT 'wallet',
   hidden INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT DEFAULT NULL,
+  device_id TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -19,7 +21,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   account_id TEXT NOT NULL REFERENCES accounts(id),
   date TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT DEFAULT NULL,
+  device_id TEXT DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(account_id, date);
@@ -32,7 +36,8 @@ CREATE TABLE IF NOT EXISTS budgets (
   auto_save INTEGER NOT NULL DEFAULT 1,
   mode TEXT CHECK(mode IN ('daily','track')) DEFAULT 'daily',
   is_setup INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  device_id TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS recurring_events (
@@ -47,5 +52,15 @@ CREATE TABLE IF NOT EXISTS recurring_events (
   end_date TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  deleted_at TEXT DEFAULT NULL,
+  device_id TEXT DEFAULT NULL
+);
+
+-- sync_meta: singleton row for cross-device sync
+CREATE TABLE IF NOT EXISTS sync_meta (
+  id INTEGER PRIMARY KEY,
+  updated_at TEXT,
+  device_id TEXT,
+  snapshot_hash TEXT
 );
