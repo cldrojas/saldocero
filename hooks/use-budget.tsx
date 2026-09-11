@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, isSameDay, startOfDay } from 'date-fns'
 import { Account, Budget, Transaction, TransactionType } from '@/types'
 import { migrateFromLocalStorage } from '@/lib/migrate-localstorage'
-import { loadState } from '@/app/actions/budget'
+import { loadState } from './use-budget-commits'
 import {
   computeDailyAllowance,
   computeProgress,
@@ -18,7 +18,19 @@ import {
   toHookAccount,
   toHookBudget,
 } from './use-budget-derivation'
-import * as optimistic from './use-budget-actions'
+import {
+  addAccount as optimisticAddAccount,
+  addTransaction as optimisticAddTransaction,
+  clearData as optimisticClearData,
+  deleteAccount as optimisticDeleteAccount,
+  removeTransaction as optimisticRemoveTransaction,
+  setupBudget as optimisticSetupBudget,
+  transferFunds as optimisticTransferFunds,
+  updateAccount as optimisticUpdateAccount,
+  updateConfig as optimisticUpdateConfig,
+  updateTransaction as optimisticUpdateTransaction,
+} from './use-budget-actions'
+import * as commits from './use-budget-commits'
 
 const FALLBACK_BUDGET: Budget = {
   startAmount: 0,
@@ -112,7 +124,7 @@ export function useBudget() {
       if (!Number.isFinite(amount) || amount <= 0) return
       const intAmount = Math.floor(amount)
       applyState(
-        optimistic.transferFunds(stateRef.current, {
+        optimisticTransferFunds(stateRef.current, {
           amount: intAmount,
           fromAccount,
           toAccount,
@@ -120,7 +132,7 @@ export function useBudget() {
         })
       )
       void runServer(() =>
-        optimistic.commitTransferFunds({
+        commits.commitTransferFunds({
           amount: intAmount,
           fromAccount,
           toAccount,
@@ -205,7 +217,7 @@ export function useBudget() {
       }
       const pending = debounce.pending
       if (pending) {
-        void optimistic.commitUpdateTransaction(pending).catch(() => {
+        void commits.commitUpdateTransaction(pending).catch(() => {
           /* best-effort flush */
         })
       }
@@ -245,7 +257,7 @@ export function useBudget() {
       endDate?: Date
       mode?: 'daily' | 'track'
     }) => {
-      const next = optimistic.setupBudget(stateRef.current, {
+      const next = optimisticSetupBudget(stateRef.current, {
         startAmount,
         endDate,
         mode,
@@ -253,7 +265,7 @@ export function useBudget() {
       applyState(next)
       setIsSetup(true)
       setLastCheckedDay(getToday())
-      void optimistic.commitSetupBudget({
+      void commits.commitSetupBudget({
         startAmount,
         endDate: endDate ? toDateIso(endDate) : undefined,
         mode,
@@ -274,7 +286,7 @@ export function useBudget() {
       mode?: 'daily' | 'track'
       autoSave?: boolean
     }) => {
-      const next = optimistic.updateConfig(stateRef.current, {
+      const next = optimisticUpdateConfig(stateRef.current, {
         startAmount,
         endDate,
         mode,
@@ -282,7 +294,7 @@ export function useBudget() {
       })
       applyState(next)
       void runServer(() =>
-        optimistic.commitUpdateConfig({
+        commits.commitUpdateConfig({
           startAmount,
           endDate: endDate !== undefined ? toDateIso(endDate) : undefined,
           mode,
@@ -299,13 +311,13 @@ export function useBudget() {
       ...snapshot,
       budget: { ...snapshot.budget, autoSave: !snapshot.budget.autoSave },
     })
-    void runServer(optimistic.commitToggleAutoSave)
+    void runServer(commits.commitToggleAutoSave)
   }, [applyState, runServer])
 
   const clearData = useCallback(() => {
-    applyState(optimistic.clearData())
+    applyState(optimisticClearData())
     setIsSetup(false)
-    void runServer(optimistic.commitClearData)
+    void runServer(commits.commitClearData)
   }, [applyState, runServer])
 
   // ─── Transactions ──────────────────────────────────────────────────────
@@ -329,8 +341,8 @@ export function useBudget() {
       const signedAmount = type === 'expense' ? -intAmount : intAmount
       const tx = { type, amount: signedAmount, description, account, date }
 
-      applyState(optimistic.addTransaction(stateRef.current, tx))
-      void optimistic.commitAddTransaction(tx)
+      applyState(optimisticAddTransaction(stateRef.current, tx))
+      void commits.commitAddTransaction(tx)
     },
     [applyState]
   )
@@ -340,10 +352,10 @@ export function useBudget() {
       const snapshot = stateRef.current
       if (!snapshot.transactions.some((t) => t.id === transactionId)) return
       applyState(
-        optimistic.removeTransaction(snapshot, transactionId, refund)
+        optimisticRemoveTransaction(snapshot, transactionId, refund)
       )
       void runServer(() =>
-        optimistic.commitRemoveTransaction(transactionId, refund)
+        commits.commitRemoveTransaction(transactionId, refund)
       )
     },
     [applyState, runServer]
@@ -356,14 +368,14 @@ export function useBudget() {
         return
       }
       // Optimistic mirror immediately; server flush is debounced (D10).
-      applyState(optimistic.updateTransaction(snapshot, updatedTransaction))
+      applyState(optimisticUpdateTransaction(snapshot, updatedTransaction))
 
       const debounce = debounceRef.current
       if (debounce.timer) clearTimeout(debounce.timer)
       debounce.pending = updatedTransaction
       debounce.timer = setTimeout(() => {
         debounce.pending = null
-        void optimistic
+        void commits
           .commitUpdateTransaction(updatedTransaction)
           .catch((error) => {
             console.error('[useBudget] updateTransaction failed', error)
@@ -377,17 +389,17 @@ export function useBudget() {
   // ─── Accounts ──────────────────────────────────────────────────────────
   const addAccount = useCallback(
     (input: Omit<Account, 'id'>) => {
-      const { state: next } = optimistic.addAccount(stateRef.current, input)
+      const { state: next } = optimisticAddAccount(stateRef.current, input)
       applyState(next)
-      void optimistic.commitAddAccount(input).then(refresh)
+      void commits.commitAddAccount(input).then(refresh)
     },
     [applyState, refresh]
   )
 
   const updateAccount = useCallback(
     (account: Account) => {
-      applyState(optimistic.updateAccount(stateRef.current, account))
-      void runServer(() => optimistic.commitUpdateAccount(account))
+      applyState(optimisticUpdateAccount(stateRef.current, account))
+      void runServer(() => commits.commitUpdateAccount(account))
     },
     [applyState, runServer]
   )
@@ -398,8 +410,8 @@ export function useBudget() {
       const target = snapshot.accounts.find((a) => a.id === accountId)
       if (!target || isDefaultAccountType(target.type)) return false
 
-      applyState(optimistic.deleteAccount(snapshot, accountId))
-      void runServer(() => optimistic.commitDeleteAccount(accountId))
+      applyState(optimisticDeleteAccount(snapshot, accountId))
+      void runServer(() => commits.commitDeleteAccount(accountId))
       return true
     },
     [applyState, runServer]

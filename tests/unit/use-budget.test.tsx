@@ -1,18 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useBudget } from '@/hooks/use-budget'
-import * as budgetServer from '@/app/actions/budget'
-import * as transactionsServer from '@/app/actions/transactions'
-import * as accountsServer from '@/app/actions/accounts'
 import * as migrateServer from '@/lib/migrate-localstorage'
 
-// ─── Server action mocks (SQLite + better-sqlite3 avoided in jsdom) ─────
+// ─── Commit-layer mock (mirrors `use-budget-commits` → client repository) ─
 // Faithful model: account balances are DERIVED from the SUM of transactions
-// (this mirrors the real server where balances come from SUM(transactions),
-// not a stored column). Commit actions only manage the transaction list and
-// account definitions; loadState recomputes balances. This is what makes
-// optimistic-change + post-refresh assertions meaningful.
-const mockedBudget = vi.hoisted(() => {
+// (mirrors sql.js where balances come from SUM(transactions), not a stored
+// column). Commit functions only manage the transaction list and account
+// definitions; loadState recomputes balances. This makes optimistic-change +
+// post-refresh assertions meaningful without booting real sql.js/WASM here
+// (repository correctness is covered separately by repository.test.ts).
+const mockedCommits = vi.hoisted(() => {
   const row = {
     budget: { start_amount: 0, start_date: null as string | null, end_date: null as string | null, auto_save: 1, mode: 'daily', is_setup: 1 },
     accounts: [] as {
@@ -38,6 +36,9 @@ const mockedBudget = vi.hoisted(() => {
       .reduce((sum, t) => sum + t.amount, 0)
   }
 
+  const dateToIso = (d: Date | string | undefined): string =>
+    d instanceof Date ? d.toISOString().split('T')[0] : (d ?? '')
+
   return {
     _db: row,
     computeBalance,
@@ -56,10 +57,60 @@ const mockedBudget = vi.hoisted(() => {
         date: new Date(t.date + 'T00:00:00'),
       })),
     })),
-    setupBudget: vi.fn(async (_args: { startAmount?: number; endDate?: string }) => ({ success: true })),
-    updateConfig: vi.fn(async () => ({ success: true })),
-    toggleAutoSave: vi.fn(async () => ({ autoSave: 1 })),
-    clearData: vi.fn(async () => ({ success: true })),
+    commitSetupBudget: vi.fn(async (args: { startAmount?: number; endDate?: string; mode?: 'daily' | 'track' }) => ({ success: true })),
+    commitUpdateConfig: vi.fn(async () => ({ success: true })),
+    commitToggleAutoSave: vi.fn(async () => ({ autoSave: 1 })),
+    commitClearData: vi.fn(async () => ({ success: true })),
+    commitAddTransaction: vi.fn(async (input: { type: string; amount: number; description: string; account: string; date: Date }) => {
+      const id = `tx-${row.transactions.length + 1}`
+      row.transactions = [{ id, type: input.type, amount: input.amount, description: input.description, account_id: input.account, date: dateToIso(input.date) }, ...row.transactions]
+      return { success: true, id }
+    }),
+    commitRemoveTransaction: vi.fn(async (id: string, refund: boolean = true) => {
+      const index = row.transactions.findIndex((t) => t.id === id)
+      if (index === -1) return { success: true }
+      const [removed] = row.transactions.splice(index, 1)
+      if (!refund) {
+        // No refund: replicate the original amount so the effect persists
+        const refundTx = { ...removed, description: `Unrefunded: ${removed.description}` }
+        row.transactions = [refundTx, ...row.transactions]
+      }
+      return { success: true }
+    }),
+    commitUpdateTransaction: vi.fn(async (updated: { id: string; type: string; amount: number; description: string; account: string; date: Date }) => {
+      const index = row.transactions.findIndex((t) => t.id === updated.id)
+      if (index === -1) return { success: true }
+      row.transactions[index] = { id: updated.id, type: updated.type, amount: updated.amount, description: updated.description, account_id: updated.account, date: dateToIso(updated.date) }
+      return { success: true }
+    }),
+    commitTransferFunds: vi.fn(async ({ amount, fromAccount, toAccount, description }: { amount: number; fromAccount: string; toAccount: string; description?: string }) => {
+      row.transactions = [
+        { id: 'exp', type: 'transfer', amount: -amount, description: description ?? 'Transfer', account_id: fromAccount, date: '2026-01-01' },
+        { id: 'inc', type: 'income', amount, description: description ?? 'Transfer', account_id: toAccount, date: '2026-01-01' },
+        ...row.transactions,
+      ]
+      return { success: true, expenseId: 'exp', incomeId: 'inc' }
+    }),
+    commitAddAccount: vi.fn(async (input: { name: string; type: string; icon?: string }) => {
+      const id = `acct-${row.accounts.length + 1}`
+      row.accounts.push({ id, name: input.name, type: input.type, icon: input.icon ?? 'wallet', hidden: 0 })
+      return { success: true, id }
+    }),
+    commitUpdateAccount: vi.fn(async (account: { id: string; name: string; type: string; icon?: string; hidden?: boolean }) => {
+      const acct = row.accounts.find((a) => a.id === account.id)
+      if (acct) {
+        acct.name = account.name
+        acct.type = account.type
+        if (account.icon !== undefined) acct.icon = account.icon
+        if (account.hidden !== undefined) acct.hidden = account.hidden ? 1 : 0
+      }
+      return { success: true }
+    }),
+    commitDeleteAccount: vi.fn(async (id: string) => {
+      const idx = row.accounts.findIndex((a) => a.id === id)
+      if (idx !== -1) row.accounts.splice(idx, 1)
+      return { success: true }
+    }),
     reset: (setup: {
       budget: typeof row.budget
       accounts: { id: string; name: string; type: string; icon?: string; hidden?: number }[]
@@ -76,67 +127,7 @@ const mockedBudget = vi.hoisted(() => {
   }
 })
 
-vi.mock('@/app/actions/budget', () => mockedBudget)
-
-const mockedTx = vi.hoisted(() => ({
-  addTransaction: vi.fn(async (input: { type: string; amount: number; description: string; account_id: string; date: string }) => {
-    const id = `tx-${mockedBudget._db.transactions.length + 1}`
-    mockedBudget._db.transactions = [{ ...input, id }, ...mockedBudget._db.transactions]
-    return { success: true, id }
-  }),
-  removeTransaction: vi.fn(async (id: string, refund: boolean = true) => {
-    const index = mockedBudget._db.transactions.findIndex((t) => t.id === id)
-    if (index === -1) return { success: true }
-    const [removed] = mockedBudget._db.transactions.splice(index, 1)
-    if (!refund) {
-      // No refund: replicate the original amount so the effect persists
-      const refundTx = { ...removed, description: `Unrefunded: ${removed.description}` }
-      mockedBudget._db.transactions = [refundTx, ...mockedBudget._db.transactions]
-    }
-    return { success: true }
-  }),
-  updateTransaction: vi.fn(async ({ id, type, amount, description, account_id, date }) => {
-    const index = mockedBudget._db.transactions.findIndex((t) => t.id === id)
-    if (index === -1) return { success: true }
-    mockedBudget._db.transactions[index] = { id, type, amount, description, account_id, date }
-    return { success: true }
-  }),
-  transferFunds: vi.fn(async ({ amount, from_account_id, to_account_id, description }: { amount: number; from_account_id: string; to_account_id: string; description?: string }) => {
-    mockedBudget._db.transactions = [
-      { id: 'exp', type: 'transfer', amount: -amount, description: description ?? 'Transfer', account_id: from_account_id, date: '2026-01-01' },
-      { id: 'inc', type: 'income', amount, description: description ?? 'Transfer', account_id: to_account_id, date: '2026-01-01' },
-      ...mockedBudget._db.transactions,
-    ]
-    return { success: true, expenseId: 'exp', incomeId: 'inc' }
-  }),
-}))
-
-vi.mock('@/app/actions/transactions', () => mockedTx)
-
-const mockedAccounts = vi.hoisted(() => ({
-  addAccount: vi.fn(async (input: { name: string; type: string; icon?: string }) => {
-    const id = `acct-${mockedBudget._db.accounts.length + 1}`
-    mockedBudget._db.accounts.push({ id, name: input.name, type: input.type, icon: input.icon ?? 'wallet', hidden: 0 })
-    return { success: true, id }
-  }),
-  updateAccount: vi.fn(async ({ id, name, type, icon, hidden }: { id: string; name?: string; type?: string; icon?: string; hidden?: number }) => {
-    const acct = mockedBudget._db.accounts.find((a) => a.id === id)
-    if (acct) {
-      if (name !== undefined) acct.name = name
-      if (type !== undefined) acct.type = type
-      if (icon !== undefined) acct.icon = icon
-      if (hidden !== undefined) acct.hidden = hidden
-    }
-    return { success: true }
-  }),
-  deleteAccount: vi.fn(async (id: string) => {
-    const idx = mockedBudget._db.accounts.findIndex((a) => a.id === id)
-    if (idx !== -1) mockedBudget._db.accounts.splice(idx, 1)
-    return { success: true }
-  }),
-}))
-
-vi.mock('@/app/actions/accounts', () => mockedAccounts)
+vi.mock('@/hooks/use-budget-commits', () => mockedCommits)
 
 const mockedMigrate = vi.hoisted(() => ({
   migrateFromLocalStorage: vi.fn(async () => true),
@@ -186,28 +177,28 @@ describe('useBudget hook (SQLite-backed)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     uuidCounter = 0
-    mockedBudget.reset(makeEmptyDb())
-    // ensure the server "setup" state reflects after setupBudget commits settle
-    mockedBudget.setupBudget.mockImplementation(async (args: { startAmount?: number; endDate?: string }) => {
+    mockedCommits.reset(makeEmptyDb())
+    // ensure the client db "setup" state reflects after setupBudget commits settle
+    mockedCommits.commitSetupBudget.mockImplementation(async (args: { startAmount?: number; endDate?: string }) => {
       const amount = Math.floor(args?.startAmount ?? 1000)
-      mockedBudget._db.budget = {
-        ...mockedBudget._db.budget,
+      mockedCommits._db.budget = {
+        ...mockedCommits._db.budget,
         start_amount: amount,
         is_setup: 1,
         end_date: args?.endDate ?? null,
       }
-      mockedBudget._db.accounts = [makeSetupBudget()]
-      mockedBudget._db.transactions = [
+      mockedCommits._db.accounts = [makeSetupBudget()]
+      mockedCommits._db.transactions = [
         { id: 'init', type: 'income', amount, description: 'Initial deposit', account_id: 'daily', date: '2026-01-01' },
       ]
       return { success: true }
     })
-    mockedTx.removeTransaction.mockImplementation(async () => ({ success: true }))
-    mockedAccounts.deleteAccount.mockImplementation(async () => ({ success: true }))
+    mockedCommits.commitRemoveTransaction.mockImplementation(async () => ({ success: true }))
+    mockedCommits.commitDeleteAccount.mockImplementation(async () => ({ success: true }))
   })
 
   it('migrates localStorage BEFORE the first load, then loads server state', async () => {
-    mockedBudget.reset(makeSetupDb({ balance: 750 }))
+    mockedCommits.reset(makeSetupDb({ balance: 750 }))
 
     const { result } = renderHook(() => useBudget())
 
@@ -216,7 +207,7 @@ describe('useBudget hook (SQLite-backed)', () => {
 
     // loadState runs after migration
     await waitFor(() => expect(result.current.accounts).toHaveLength(1))
-    expect(mockedBudget.loadState).toHaveBeenCalledTimes(1)
+    expect(mockedCommits.loadState).toHaveBeenCalledTimes(1)
     const daily = result.current.accounts.find((a) => a.type === 'daily')
     expect(daily?.balance).toBe(750)
     expect(result.current.isSetup).toBe(true)
@@ -237,7 +228,7 @@ describe('useBudget hook (SQLite-backed)', () => {
 
     expect(result.current.isSetup).toBe(true)
     expect(result.current.accounts.find((a) => a.type === 'daily')?.balance).toBe(1000)
-    expect(mockedBudget.setupBudget).toHaveBeenCalled()
+    expect(mockedCommits.commitSetupBudget).toHaveBeenCalled()
 
     await waitFor(() => {
       // commit + refresh settle
@@ -247,7 +238,7 @@ describe('useBudget hook (SQLite-backed)', () => {
 
   it('computes derived daily values from account balance', async () => {
     // 1000 over 8 days (today + 7)
-    mockedBudget.reset(makeSetupDb({ balance: 1000 }))
+    mockedCommits.reset(makeSetupDb({ balance: 1000 }))
     const { result } = renderHook(() => useBudget())
 
     await waitFor(() => expect(result.current.accounts).toHaveLength(1))
@@ -281,7 +272,7 @@ describe('useBudget hook (SQLite-backed)', () => {
     expect(result.current.transactions[0].amount).toBe(-200)
     expect(result.current.accounts.find((a) => a.id === daily.id)!?.balance).toBe(before - 200)
     // committed
-    expect(mockedTx.addTransaction).toHaveBeenCalledTimes(1)
+    expect(mockedCommits.commitAddTransaction).toHaveBeenCalledTimes(1)
   })
 
   it('addTransaction: ignores invalid non-positive amounts', async () => {
@@ -324,11 +315,11 @@ describe('useBudget hook (SQLite-backed)', () => {
 
     expect(result.current.accounts.find((a) => a.id === dailyId)!.balance).toBe(900)
     expect(result.current.accounts.find((a) => a.id === savings.id)!.balance).toBe(100)
-    expect(mockedTx.transferFunds).toHaveBeenCalledTimes(1)
+    expect(mockedCommits.commitTransferFunds).toHaveBeenCalledTimes(1)
   })
 
   it('deleteAccount: false + keeps default accounts guarded by TYPE, not slug', async () => {
-    mockedBudget.reset(makeSetupDb())
+    mockedCommits.reset(makeSetupDb())
     const { result } = renderHook(() => useBudget())
     await waitFor(() => expect(result.current.accounts).toHaveLength(1))
 
@@ -343,7 +334,7 @@ describe('useBudget hook (SQLite-backed)', () => {
     expect(res).toBe(false)
     expect(result.current.accounts.find((a) => a.type === 'daily')).toBeDefined()
     // server deleteAccount NOT called for guarded default
-    expect(mockedAccounts.deleteAccount).not.toHaveBeenCalled()
+    expect(mockedCommits.commitDeleteAccount).not.toHaveBeenCalled()
   })
 
   it('deleteAccount: removes a custom account', async () => {
@@ -371,7 +362,7 @@ describe('useBudget hook (SQLite-backed)', () => {
     })
     expect(res!).toBe(true)
     expect(result.current.accounts.length).toBe(before - 1)
-    expect(mockedAccounts.deleteAccount).toHaveBeenCalledWith(added.id)
+    expect(mockedCommits.commitDeleteAccount).toHaveBeenCalledWith(added.id)
   })
 
   it('updateAccount: creates positive adjustment transaction', async () => {
@@ -390,7 +381,7 @@ describe('useBudget hook (SQLite-backed)', () => {
     expect(dailyAfter.balance).toBe(1500)
     const adjustment = result.current.transactions.find((t) => t.type === 'adjustment')
     expect(adjustment?.amount).toBe(500)
-    expect(mockedAccounts.updateAccount).toHaveBeenCalledTimes(1)
+    expect(mockedCommits.commitUpdateAccount).toHaveBeenCalledTimes(1)
   })
 
   it('updateAccount: does not create adjustment when balance unchanged', async () => {
@@ -425,7 +416,7 @@ describe('useBudget hook (SQLite-backed)', () => {
       result.current.removeTransaction(tx.id)
     })
     expect(result.current.accounts.find((a) => a.id === daily.id)!.balance).toBe(1000)
-    expect(mockedTx.removeTransaction).toHaveBeenCalledTimes(1)
+    expect(mockedCommits.commitRemoveTransaction).toHaveBeenCalledTimes(1)
   })
 
   it('removeTransaction: does not restore balance when refund=false', async () => {
@@ -465,6 +456,6 @@ describe('useBudget hook (SQLite-backed)', () => {
     })
     // sync flush of effects
     await act(async () => {})
-    expect(mockedTx.transferFunds).not.toHaveBeenCalled()
+    expect(mockedCommits.commitTransferFunds).not.toHaveBeenCalled()
   })
 })

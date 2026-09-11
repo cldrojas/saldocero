@@ -24,25 +24,25 @@ Fecha: 2026-09-09
 
 ## Batch 0 — Fundaciones (dependencias y scaffolding)
 
-- [ ] 0.1 Instalar dependencias: `pnpm add sql.js @vercel/blob` y `pnpm add -D @types/sql.js`
-- [ ] 0.2 Verificar que `sql.js` no rompe `next.config.mjs` (no debe ir a `serverExternalPackages`; es client-side)
-- [ ] 0.3 Crear `lib/db/client.ts` con `initDb()`, `openDb(bytes)`, `applySchema()`, `exportDb()` (lazy WASM, ver design D11)
-- [ ] 0.4 Crear `lib/db/persistence.ts` con IndexedDB primario + OPFS fallback + `saveBackup`/`listBackups`/`restoreBackup` (design D2/D12)
-- [ ] 0.5 Crear `lib/db/meta.ts` con `getSyncMeta`/`updateSyncMeta`/`getActiveDeviceId` (localStorage uuid v4 estable)
+- [x] 0.1 Instalar dependencias: `pnpm add sql.js @vercel/blob` y `pnpm add -D @types/sql.js`
+- [x] 0.2 Verificar que `sql.js` no rompe `next.config.mjs` (no debe ir a `serverExternalPackages`; es client-side)
+- [x] 0.3 Crear `lib/db/client.ts` con `initDb()`, `openDb(bytes)`, `applySchema()`, `exportDb()` (lazy WASM, ver design D11)
+- [x] 0.4 Crear `lib/db/persistence.ts` con IndexedDB primario + OPFS fallback + `saveBackup`/`listBackups`/`restoreBackup` (design D2/D12)
+- [x] 0.5 Crear `lib/db/meta.ts` con `getSyncMeta`/`updateSyncMeta`/`getActiveDeviceId` (localStorage uuid v4 estable)
 
 ## Batch 1 — Schema y Merge (corazón, strict TDD)
 
-- [ ] 1.1 Actualizar `lib/db/schema.sql`: `CREATE TABLE IF NOT EXISTS` con columnas `deleted_at`/`device_id` + tabla `sync_meta` (ver migración)
-- [ ] 1.2 En `applySchema`: detección por `PRAGMA table_info` → migración de bases legacy (idempotente)
-- [ ] 1.3 **[TEST primero]** Unit tests de `merge.ts`: LWW por `updated_at`, empates `created_at` → `device_id` lexicográfico, tombstones (borrado vs vivo, revival), budgets singleton, MergeResult counts, determinismo/idempotencia — con dos `Database` sql.js en memoria
-- [ ] 1.4 Implementar `lib/db/merge.ts` con `mergeDatabases(local, remote, deviceId): MergeResult` (puro, in-place sobre local)
+- [x] 1.1 Actualizar `lib/db/schema.sql`: `CREATE TABLE IF NOT EXISTS` con columnas `deleted_at`/`device_id` + tabla `sync_meta` (ver migración)
+- [x] 1.2 En `applySchema`: detección por `PRAGMA table_info` → migración de bases legacy (idempotente)
+- [x] 1.3 **[TEST primero]** Unit tests de `merge.ts`: LWW por `updated_at`, empates `created_at` → `device_id` lexicográfico, tombstones (borrado vs vivo, revival), budgets singleton, MergeResult counts, determinismo/idempotencia — con dos `Database` sql.js en memoria
+- [x] 1.4 Implementar `lib/db/merge.ts` con `mergeDatabases(local, remote, deviceId): MergeResult` (puro, in-place sobre local)
 
 ## Batch 2 — Repository cliente
 
-- [ ] 2.1 **[TEST primero]** Unit tests de repository: soft delete + `device_id` en cada write + filtro `deleted_at IS NULL` (sql.js en memoria)
-- [ ] 2.2 Implementar `lib/db/repository.ts`: replicate las 16+ funciones de Server Actions (`loadState`, `setupBudget`, `addTransaction`, `removeTransaction`, `updateTransaction`, `addAccount`, `updateAccount`, `deleteAccount`, `transferFunds`, `updateConfig`, `toggleAutoSave`, `clearData`, recurring CRUD, `computeProjection`)
-- [ ] 2.3 Migrar `hooks/use-budget.tsx`: de Server Actions a `lib/db/repository.ts` (mismo contrato, optimistic updates intactos)
-- [ ] 2.4 Regresión: `pnpm test` + `pnpm tsc --noEmit` verdes (la UI debe seguir idéntica)
+- [x] 2.1 **[TEST primero]** Unit tests de repository: soft delete + `device_id` en cada write + filtro `deleted_at IS NULL` (sql.js en memoria)
+- [x] 2.2 Implementar `lib/db/repository.ts`: replicate las 16+ funciones de Server Actions (`loadState`, `setupBudget`, `addTransaction`, `removeTransaction`, `updateTransaction`, `addAccount`, `updateAccount`, `deleteAccount`, `transferFunds`, `updateConfig`, `toggleAutoSave`, `clearData`, recurring CRUD, `computeProjection`)
+- [x] 2.3 Migrar `hooks/use-budget.tsx`: de Server Actions a `lib/db/repository.ts` (mismo contrato, optimistic updates intactos)
+- [x] 2.4 Regresión: `pnpm test` + `pnpm tsc --noEmit` verdes (la UI debe seguir idéntica)
 
 ## Batch 3 — Protocolo de Sync (server)
 
