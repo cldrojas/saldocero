@@ -206,7 +206,8 @@ export function updateConfig(
          end_date = CASE WHEN ? IS NOT NULL THEN ? ELSE end_date END,
          mode = COALESCE(?, mode),
          auto_save = COALESCE(?, auto_save),
-         updated_at = ?
+         updated_at = ?,
+         device_id = ?
        WHERE id = 'default'`,
       [
         startAmount ?? null,
@@ -215,6 +216,7 @@ export function updateConfig(
         mode ?? null,
         autoSave ?? null,
         ts,
+        DEVICE_ID,
       ]
     )
 
@@ -244,8 +246,8 @@ export function toggleAutoSave(db: Database) {
     const row = queryOne(db, "SELECT auto_save FROM budgets WHERE id = 'default'") as { auto_save: number } | undefined
     const newAutoSave = row && row.auto_save === 1 ? 0 : 1
     db.run(
-      "UPDATE budgets SET auto_save = ?, updated_at = ? WHERE id = 'default'",
-      [newAutoSave, now()]
+      `UPDATE budgets SET auto_save = ?, updated_at = ?, device_id = ? WHERE id = 'default'`,
+      [newAutoSave, now(), DEVICE_ID]
     )
     return { autoSave: newAutoSave }
   })
@@ -284,15 +286,18 @@ export function addTransaction(
 
 export function removeTransaction(id: string, refund: boolean = true, db: Database) {
   return inTx(db, () => {
+    const ts = now()
     const tx = queryOne(db, 'SELECT * FROM transactions WHERE id = ? AND deleted_at IS NULL', [id]) as TransactionRow | undefined
     if (!tx) return { success: false as const, error: 'Transaction not found' }
 
-    // Hard delete — mirrors the original Server Action behavior
-    db.run('DELETE FROM transactions WHERE id = ?', [id])
+    // Soft delete — set deleted_at so the tombstone survives sync merges
+    db.run(
+      'UPDATE transactions SET deleted_at = ?, updated_at = ?, device_id = ? WHERE id = ?',
+      [ts, ts, DEVICE_ID, id]
+    )
 
     // Without refund: insert replica so the accounting effect persists
     if (!refund) {
-      const ts = now()
       db.run(
         `INSERT INTO transactions (id, type, amount, description, account_id, date, created_at, updated_at, device_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -326,9 +331,10 @@ export function updateTransaction(
          description = COALESCE(?, description),
          account_id = COALESCE(?, account_id),
          date = ?,
-         updated_at = ?
+         updated_at = ?,
+         device_id = ?
        WHERE id = ?`,
-      [type, amount, description, account_id, date, now(), id]
+      [type, amount, description, account_id, date, now(), DEVICE_ID, id]
     )
 
     return { success: true as const }
@@ -405,14 +411,16 @@ export function updateAccount(
        type = COALESCE(?, type),
        icon = COALESCE(?, icon),
        hidden = COALESCE(?, hidden),
-       updated_at = ?
+       updated_at = ?,
+       device_id = ?
      WHERE id = ?`,
-    [name, type, icon ?? null, hidden ?? null, now(), id]
+    [name, type, icon ?? null, hidden ?? null, now(), DEVICE_ID, id]
   )
 }
 
 export function deleteAccount(id: string, db: Database) {
   return inTx(db, () => {
+    const ts = now()
     const account = queryOne(
       db,
       'SELECT a.*, COALESCE(SUM(t.amount), 0) AS balance FROM accounts a LEFT JOIN transactions t ON t.account_id = a.id AND t.deleted_at IS NULL WHERE a.id = ? AND a.deleted_at IS NULL GROUP BY a.id',
@@ -422,7 +430,6 @@ export function deleteAccount(id: string, db: Database) {
 
     // Drain positive balance to savings
     if (account.balance > 0) {
-      const ts = now()
       const savingsExists = queryOne(db, "SELECT id FROM accounts WHERE id = 'savings' AND deleted_at IS NULL")
       if (!savingsExists) {
         db.run(
@@ -438,9 +445,15 @@ export function deleteAccount(id: string, db: Database) {
       )
     }
 
-    // Delete account + its transactions
-    db.run('DELETE FROM accounts WHERE id = ?', [id])
-    db.run('DELETE FROM transactions WHERE account_id = ?', [id])
+    // Soft delete — tombstone the account and cascade its transactions
+    db.run(
+      'UPDATE accounts SET deleted_at = ?, updated_at = ?, device_id = ? WHERE id = ? AND deleted_at IS NULL',
+      [ts, ts, DEVICE_ID, id]
+    )
+    db.run(
+      'UPDATE transactions SET deleted_at = ?, updated_at = ?, device_id = ? WHERE account_id = ? AND deleted_at IS NULL',
+      [ts, ts, DEVICE_ID, id]
+    )
 
     return { success: true as const }
   })
@@ -517,7 +530,8 @@ export function updateRecurringEvent(
        start_date = COALESCE(?, start_date),
        end_date = COALESCE(?, end_date),
        active = COALESCE(?, active),
-       updated_at = ?
+       updated_at = ?,
+       device_id = ?
      WHERE id = ?`,
     [
       description ?? null,
@@ -530,6 +544,7 @@ export function updateRecurringEvent(
       end_date ?? null,
       active ?? null,
       now(),
+      DEVICE_ID,
       id,
     ]
   )
@@ -538,8 +553,8 @@ export function updateRecurringEvent(
 export function deleteRecurringEvent(id: string, db: Database) {
   // Soft delete — set deleted_at so the row is filtered out of reads
   db.run(
-    'UPDATE recurring_events SET deleted_at = ?, updated_at = ? WHERE id = ?',
-    [now(), now(), id]
+    'UPDATE recurring_events SET deleted_at = ?, updated_at = ?, device_id = ? WHERE id = ?',
+    [now(), now(), DEVICE_ID, id]
   )
   return { success: true as const }
 }

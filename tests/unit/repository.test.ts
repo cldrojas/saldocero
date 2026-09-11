@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import type { Database, SqlJsStatic } from 'sql.js'
 import { getSql } from '@/lib/db/client'
+import { mergeDatabases } from '@/lib/db/merge'
 import { SCHEMA } from '@/lib/db/schema'
 import {
   addAccount,
@@ -242,6 +243,13 @@ describe('repository: transactions', () => {
     expect(state.transactions.find((t: { id: string }) => t.id === id)).toBeUndefined()
     expect(state.transactions.some((t: { description: string }) => t.description.startsWith('Unrefunded:'))).toBe(false)
     expect(state.accounts.find((a: { id: string }) => a.id === 'daily')?.balance).toBe(10000)
+
+    // Soft delete: the row remains as a tombstone stamped with the local device.
+    const rows = db.exec(
+      "SELECT deleted_at, device_id FROM transactions WHERE id = '" + id + "'"
+    )[0]?.values
+    expect(rows?.[0]?.[0]).not.toBeNull()
+    expect(rows?.[0]?.[1]).toBe('local')
   })
 
   it('removeTransaction with refund=false inserts an Unrefunded replica', () => {
@@ -375,6 +383,20 @@ describe('repository: accounts', () => {
     const state = loadState(db)
     expect(state.accounts.find((a: { id: string }) => a.id === id)).toBeUndefined()
     expect(state.transactions.some((t: { account: string }) => t.account === id)).toBe(false)
+
+    // Soft delete: account + its transactions remain as tombstones.
+    const accRows = db.exec(
+      "SELECT deleted_at, device_id FROM accounts WHERE id = '" + id + "'"
+    )[0]?.values
+    expect(accRows?.[0]?.[0]).not.toBeNull()
+    expect(accRows?.[0]?.[1]).toBe('local')
+
+    const txRows = db.exec(
+      "SELECT deleted_at, device_id FROM transactions WHERE account_id = '" + id + "'"
+    )[0]?.values
+    expect(txRows).toHaveLength(1)
+    expect(txRows?.[0]?.[0]).not.toBeNull()
+    expect(txRows?.[0]?.[1]).toBe('local')
   })
 
   it('deleteAccount returns not-found for a missing account', () => {
@@ -487,5 +509,167 @@ describe('repository: recurring events', () => {
       "SELECT deleted_at FROM recurring_events WHERE id = '" + id + "'"
     )[0]?.values
     expect(rows?.[0]?.[0]).not.toBeNull()
+  })
+})
+
+describe('repository: every write stamps the local device_id', () => {
+  it('updateTransaction stamps device_id', () => {
+    const db = createDb()
+    const { id } = addTransaction(
+      { type: 'expense', amount: -500, description: 'Cafe', account_id: 'daily', date: '2026-09-10' },
+      db
+    )
+    db.exec("UPDATE transactions SET device_id = 'device-b' WHERE id = '" + id + "'")
+
+    updateTransaction(
+      { id, type: 'expense', amount: -700, description: 'Lunch', account_id: 'daily', date: '2026-09-11' },
+      db
+    )
+
+    const rows = db.exec("SELECT device_id FROM transactions WHERE id = '" + id + "'")[0]?.values
+    expect(rows?.[0]?.[0]).toBe('local')
+  })
+
+  it('updateAccount stamps device_id', () => {
+    const db = createDb()
+    const { id } = addAccount({ name: 'Vacaciones', type: 'custom' }, db)
+    db.exec("UPDATE accounts SET device_id = 'device-b' WHERE id = '" + id + "'")
+
+    updateAccount({ id, name: 'Viajes', type: 'custom' }, db)
+
+    const rows = db.exec("SELECT device_id FROM accounts WHERE id = '" + id + "'")[0]?.values
+    expect(rows?.[0]?.[0]).toBe('local')
+  })
+
+  it('updateConfig stamps device_id', () => {
+    const db = createDb()
+    setupBudget({ startAmount: 10000 }, db)
+    db.exec("UPDATE budgets SET device_id = 'device-b' WHERE id = 'default'")
+
+    updateConfig({ startAmount: 15000 }, db)
+
+    const rows = db.exec("SELECT device_id FROM budgets WHERE id = 'default'")[0]?.values
+    expect(rows?.[0]?.[0]).toBe('local')
+  })
+
+  it('toggleAutoSave stamps device_id', () => {
+    const db = createDb()
+    setupBudget({ startAmount: 10000 }, db)
+    db.exec("UPDATE budgets SET device_id = 'device-b' WHERE id = 'default'")
+
+    toggleAutoSave(db)
+
+    const rows = db.exec("SELECT device_id FROM budgets WHERE id = 'default'")[0]?.values
+    expect(rows?.[0]?.[0]).toBe('local')
+  })
+
+  it('updateRecurringEvent stamps device_id', () => {
+    const db = createDb()
+    const { id } = addRecurringEvent(
+      { description: 'Gym', type: 'expense', amount: -3000, frequency: 'monthly', day_of_month: 5 },
+      db
+    )
+    db.exec("UPDATE recurring_events SET device_id = 'device-b' WHERE id = '" + id + "'")
+
+    updateRecurringEvent({ id, description: 'Gym Premium' }, db)
+
+    const rows = db.exec("SELECT device_id FROM recurring_events WHERE id = '" + id + "'")[0]?.values
+    expect(rows?.[0]?.[0]).toBe('local')
+  })
+
+  it('deleteRecurringEvent stamps device_id on the tombstone', () => {
+    const db = createDb()
+    const { id } = addRecurringEvent(
+      { description: 'Gym', type: 'expense', amount: -3000, frequency: 'monthly', day_of_month: 5 },
+      db
+    )
+    db.exec("UPDATE recurring_events SET device_id = 'device-b' WHERE id = '" + id + "'")
+
+    deleteRecurringEvent(id, db)
+
+    const rows = db.exec(
+      "SELECT device_id FROM recurring_events WHERE id = '" + id + "'"
+    )[0]?.values
+    expect(rows?.[0]?.[0]).toBe('local')
+  })
+})
+
+describe('repository: soft-deleted rows do not resurrect via merge', () => {
+  it('a transaction deleted on device A stays deleted after merging a live copy from device B', () => {
+    const dbA = createDb()
+    const { id } = addTransaction(
+      { type: 'expense', amount: -500, description: 'Cafe', account_id: 'daily', date: '2026-09-10' },
+      dbA
+    )
+    expect(removeTransaction(id, true, dbA)).toEqual({ success: true })
+
+    // Device B never learned about the delete and still has a LIVE copy,
+    // with a newer updated_at than the tombstone.
+    const dbB = createDb()
+    dbB.exec(
+      `INSERT INTO transactions (id, type, amount, description, account_id, date, created_at, updated_at, device_id)
+       VALUES ('${id}', 'expense', -500, 'Cafe', 'daily', '2026-09-10',
+               '2026-09-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'device-b')`
+    )
+
+    const merged = mergeDatabases(dbA, dbB, 'device-a', SQL)
+
+    // Tombstone wins over the newer live copy: the row does not resurrect.
+    expect(loadState(merged).transactions.find((t: { id: string }) => t.id === id)).toBeUndefined()
+    const rows = merged.exec("SELECT deleted_at FROM transactions WHERE id = '" + id + "'")[0]?.values
+    expect(rows?.[0]?.[0]).not.toBeNull()
+  })
+
+  it('removeTransaction with refund=false keeps the tombstone while merging a live copy', () => {
+    const dbA = createDb()
+    const { id } = addTransaction(
+      { type: 'expense', amount: -500, description: 'Cafe', account_id: 'daily', date: '2026-09-10' },
+      dbA
+    )
+    expect(removeTransaction(id, false, dbA)).toEqual({ success: true })
+
+    const dbB = createDb()
+    dbB.exec(
+      `INSERT INTO transactions (id, type, amount, description, account_id, date, created_at, updated_at, device_id)
+       VALUES ('${id}', 'expense', -500, 'Cafe', 'daily', '2026-09-10',
+               '2026-09-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'device-b')`
+    )
+
+    const merged = mergeDatabases(dbA, dbB, 'device-a', SQL)
+
+    expect(loadState(merged).transactions.find((t: { id: string }) => t.id === id)).toBeUndefined()
+    const replica = loadState(merged).transactions.find(
+      (t: { description: string }) => t.description === 'Unrefunded: Cafe'
+    )
+    expect(replica).toBeDefined()
+  })
+
+  it('an account deleted on device A stays deleted and its transactions stay deleted after merge', () => {
+    const dbA = createDb()
+    const { id: accountId } = addAccount({ name: 'Vacaciones', type: 'custom' }, dbA)
+    const { id: txId } = addTransaction(
+      { type: 'income', amount: 2000, description: 'Fondo', account_id: accountId, date: '2026-09-01' },
+      dbA
+    )
+    expect(deleteAccount(accountId, dbA)).toEqual({ success: true })
+
+    // Device B still has the live account + transaction.
+    const dbB = createDb()
+    dbB.exec(
+      `INSERT INTO accounts (id, name, type, icon, hidden, created_at, updated_at, device_id)
+       VALUES ('${accountId}', 'Vacaciones', 'custom', 'wallet', 0,
+               '2026-09-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'device-b')`
+    )
+    dbB.exec(
+      `INSERT INTO transactions (id, type, amount, description, account_id, date, created_at, updated_at, device_id)
+       VALUES ('${txId}', 'income', 2000, 'Fondo', '${accountId}', '2026-09-01',
+               '2026-09-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z', 'device-b')`
+    )
+
+    const merged = mergeDatabases(dbA, dbB, 'device-a', SQL)
+
+    const state = loadState(merged)
+    expect(state.accounts.find((a: { id: string }) => a.id === accountId)).toBeUndefined()
+    expect(state.transactions.find((t: { id: string }) => t.id === txId)).toBeUndefined()
   })
 })

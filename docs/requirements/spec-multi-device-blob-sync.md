@@ -50,7 +50,7 @@ La capa de datos **DEBE** exponer un módulo `lib/db/repository.ts` con la misma
 ### FR-3: Merge last-write-wins con tombstones
 El merge **DEBE** aplicar regla LWW por registro usando `updated_at`; en empate, **DEBE** desempatar por `created_at` y luego por `device_id` lexicográfico.
 
-Los borrados **DEBEN** ser soft delete (`deleted_at`), nunca borrado físico en el merge; una fila con `deleted_at` **DEBE** ganar contra la versión viva solo si su `updated_at` es mayor.
+Los borrados **DEBEN** ser soft delete (`deleted_at`), nunca borrado físico en el merge; una fila con `deleted_at` **DEBE** ganar contra la versión viva **incondicionalmente**, sin importar timestamps de ambas versiones.
 
 El merge **DEBE** ejecutarse sobre un backup local previo (snapshot restaurable desde la UI) y **DEBE** reportar un `MergeResult` (filas tomadas de local/remoto, conflictos, tombstone aplicados).
 
@@ -66,9 +66,9 @@ El merge **DEBE** ejecutarse sobre un backup local previo (snapshot restaurable 
 - THEN gana la de mayor `created_at`, y si también empatan, la de `device_id` lexicográficamente mayor
 
 #### Escenario: Borrado remoto vs edición local
-- GIVEN una fila borrada en remoto (`deleted_at` reciente) y editada en local (`updated_at` menor)
+- GIVEN una fila borrada en remoto ya tiene `deleted_at` y en local existe la versión viva (incluso con `updated_at` más reciente)
 - WHEN se ejecuta el merge
-- THEN la fila queda borrada (tombstone con `updated_at` mayor vence)
+- THEN la fila queda borrada (el tombstone vence incondicionalmente, sin importar timestamps)
 
 #### Escenario: Backup restaurable
 - GIVEN un merge completado
@@ -86,7 +86,7 @@ El relay **DEBE** almacenar el snapshot bajo el namespace `saldo-cero-<syncCode>
 - GIVEN un usuario con `data/saldo-cero.db` existente y un relay configurado
 - WHEN el usuario pulsa Sincronizar por primera vez
 - THEN la app ofrece migrar el `.db` existente como primer snapshot (con confirmación explícita)
-- AND tras confirmar, hace push y marca `sync_meta` con hash + `last_sync_at`
+- AND tras confirmar, hace push y marca `sync_meta` con `snapshot_hash` + `updated_at`
 
 #### Escenario: Concurrencia entre dispositivos
 - GIVEN dispositivo B pulsó Sincronizar y remoto cambió después del pull de A
@@ -106,7 +106,7 @@ El relay **DEBE** almacenar el snapshot bajo el namespace `saldo-cero-<syncCode>
 - AND los endpoints responden 401 sin credenciales válidas
 
 ### FR-5: Migración de modelo (tombstones + device_id + sync_meta)
-La migración **DEBE** añadir `deleted_at` y `device_id` (TEXT, nullable) a `accounts`, `transactions` y `recurring_events`, y crear la tabla `sync_meta` (singleton con `last_sync_at`, `device_id`, `last_snapshot_hash`, `updated_at`).
+La migración **DEBE** añadir `deleted_at` y `device_id` (TEXT, nullable) a `accounts`, `transactions` y `recurring_events`, y crear la tabla `sync_meta` (fila única `id = 1` con columnas `updated_at`, `device_id`, `snapshot_hash`, tal como están definidas en `lib/db/schema.sql`).
 
 Las filas existentes **DEBEN** migrar con `deleted_at = NULL` y `device_id = NULL` (legacy tratado como vivo); las queries normales **DEBEN** filtrar `deleted_at IS NULL`.
 
@@ -200,5 +200,38 @@ El hook **DEBE** operar sobre el repository cliente; `lib/migrate-localstorage.t
 | FR-DB import | ✅ push guiado | ✅ idempotencia hash | — |
 | FR-UI-HOOK | ✅ migración legacy | — | — |
 
-## Siguiente paso
-Listo para **design** (`sdd-design`). Si el design ya existe, listo para **tasks** (`sdd-tasks`).
+## Cobertura del spec (verificado `sdd-verify`, 2026-09-11)
+
+**Acceptance gate:** `pnpm vitest run` → 173/173 PASS (19 files, 29.5s) · `pnpm tsc --noEmit` → clean · HEAD `71c6442`
+
+| Requisito | Estado | Tests clave | Notas |
+|-----------|--------|-------------|-------|
+| FR-1 sql.js cliente (IndexedDB) | ✅ COVERED | `persistence.test.ts` (7), `load-state.test.ts` (4) | IndexedDB primario, sin código OPFS; spec dice IndexedDB como backend — correcto |
+| FR-2 repository CRUD | ✅ COVERED | `repository.test.ts` (27), `use-budget.test.tsx` (15) | Server actions dead-code verificadas, sin leak al hook |
+| FR-3 merge LWW + tombstones | ✅ COVERED | `merge.test.ts` (12) | ⚠️ Spec wording drift vs impl (ver WARNING 4) |
+| FR-4 sync relay | ✅ COVERED | `sync-protocol.test.ts` (12), `sync-client.test.ts` (15) | Primera sync, concurrencia, sin cambios, errores — todo verde |
+| FR-5 migración schema | ✅ COVERED | `schema-sync.test.ts` (2), `migrate-localstorage.test.ts` (9), `repository.test.ts` (1) | ⚠️ sync_meta drift + device_id stamping (ver WARNINGs 1–2) |
+| FR-6 auth relay | ✅ COVERED | `sync-protocol.test.ts` (6), `sync-import.test.ts` (2) | 401 multi-vía, namespace aislado |
+| FR-DB import legacy | ✅ COVERED | `sync-import.test.ts` (6), `sync-settings.test.tsx` (4) | Primer push idempotente, backup list/restore |
+| FR-UI-HOOK hook persistence | ✅ COVERED | `sync-button.test.tsx` (7), `sync-settings.test.tsx` (7), `use-budget.test.tsx` (1) + E2E (9) | — |
+| NFR-1 Rendimiento | ✅ COVERED | Structural: lazy import, client-only, sin secretos en bundle | — |
+| NFR-2 Resiliencia offline | ✅ COVERED | `sync-button.test.tsx` (2), `sync-client.test.ts` (2) | Sync manual, error claro, estado local preservado |
+| NFR-3 Integridad datos | ⚠️ PARTIAL | `merge.test.ts` (2) | Merge tombstones OK; repo hard-deletes → resurrección vía merge |
+| NFR-4 Privacidad | ✅ COVERED | `sync-protocol.test.ts` (6), namespace isolation test | — |
+
+### Hallazgos
+
+**WARNING** (should fix):
+1. **sync_meta drift** — `schema.sql` = `(id INTEGER PK, updated_at, device_id, snapshot_hash)` vs delta FR-5 L109 / migration doc = singleton `(id TEXT DEFAULT 'singleton', last_sync_at, device_id, last_snapshot_hash, updated_at)`. Doc + spec + code discrepantes. Impacto funcional bajo.
+2. **device_id stamping** — `repository.ts` EUPDATEs solo setean `updated_at`, nunca `device_id`. Delta FR-5 L113: "Cada escritura del repository DEBE setear updated_at y device_id." Solo INSERTs stamp `'local'`.
+3. **Hard deletes + resurrección** — `removeTransaction` y `deleteAccount` usan DELETE físico. Filas borradas desaparecen del snapshot → el otro dispositivo las conserva → merge las mantiene. No hay test de tombstone viejo vs edición nueva.
+4. **Spec wording drift (FR-3)** — delta FR-3 L53 dice tombstone vence "solo si su `updated_at` es mayor"; PRD pseudo-código 6.5 + `merge.ts` aplican tombstone-over-live sin condición de timestamp. Implementación sigue la intención de diseño; spec wording diverge.
+
+**SUGGESTION** (nice to have):
+1. **Merge device_id**: `merge.ts` stamps syncing device id, no winner's device_id — intencional según tests pero diverge de FR-3 scenario L61.
+2. **budgets.deleted_at in test fixture**: `merge.test.ts` incluye budgets.deleted_at; `schema.sql` no lo tiene. Bajo impacto (singleton upsert).
+3. **OPFS fallback**: spec lo menciona como fallback; no hay código OPFS. Suficiente con IndexedDB-only (spec dice IndexedDB como backend primario).
+4. **Blob URL predecible**: `blob-relay.ts` usa `access: 'public'` + `addRandomSuffix: false`; cubierto por diseño (401 + namespace privado, aceptado en tabla de cobertura L199).
+
+### Verdicto
+**PASS WITH WARNINGS** — 12/12 requisitos covered (11 ✅, 1 ⚠️), 173/173 tests green, tsc clean. Cuatro WARNINGs documentados (doc drift + spec wording); ninguno bloquea archive. Los WARNINGs se pueden resolver al decidir: (a) si sync_meta schema se alinea con spec o viceversa, (b) si device_id se añade a EUPDATEs, (c) si se corrige hard-delete → soft-delete en repo, (d) si se actualiza FR-3 wording.

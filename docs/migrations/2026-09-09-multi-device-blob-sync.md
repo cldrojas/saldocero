@@ -75,24 +75,23 @@ recurring_events(
   device_id TEXT            -- NUEVO
 )
 
-sync_meta(                  -- NUEVA: metadata de sincronización
-  id TEXT PK DEFAULT 'singleton',
-  last_sync_at TEXT,
+sync_meta(                  -- NUEVA: metadata de sincronización (singleton, fila id = 1)
+  id INTEGER PRIMARY KEY,
+  updated_at TEXT,
   device_id TEXT,
-  last_snapshot_hash TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  snapshot_hash TEXT
 )
 ```
 
 ## Estrategia de datos
 
 1. **Aplicación de la migración**: `lib/db/schema.sql` se actualiza a `CREATE TABLE IF NOT EXISTS` con las columnas nuevas + `ALTER TABLE ... ADD COLUMN` guardados por detección de schema (PRAGMA table_info). En el primer arranque post-migración, todas las filas existentes quedan con `deleted_at = NULL` y `device_id = NULL` (datos legacy sin traza; el merge los trata como vivos con prioridad de timestamp `updated_at`).
-2. **Backfill**: `sync_meta` se crea con una fila única (`id='singleton'`) cuando no existe; `last_sync_at` apunta al momento de la migración.
+2. **Backfill**: `sync_meta` se crea con una fila única (`id = 1`) cuando no existe; `updated_at` apunta al momento de la migración.
 3. **Semántica nueva en la app**:
    - Los borrados pasan de hard delete a **soft delete** (`deleted_at = datetime('now')`). Las queries normales filtran `deleted_at IS NULL`.
    - Cada escritura setea `updated_at` y `device_id` del dispositivo activo.
-   - `sync_meta.device_id` se usa para desempates deterministas en el merge.
-4. **Migración de datos existente**: el `data/saldo-cero.db` server-side actual se convierte en el **primer snapshot** del relay (push guiado desde la UI); un dispositivo nuevo puede inicializarse desde él (pull + merge). Idempotente: hash del snapshot en `sync_meta` evita duplicados.
+   - Los desempates del merge usan el `device_id` a nivel de fila (`pickWinner`); `sync_meta.device_id` solo registra qué dispositivo hizo el último sync.
+4. **Migración de datos existente**: el `data/saldo-cero.db` server-side actual se convierte en el **primer snapshot** del relay (push guiado desde la UI); un dispositivo nuevo puede inicializarse desde él (pull + merge). Idempotente: hash del snapshot (`snapshot_hash`) en `sync_meta` evita duplicados.
 
 ## Rollback
 
