@@ -35,7 +35,7 @@ export function SyncButton({ className }: SyncButtonProps) {
   // Estado inicial derivado de la config local (SSR-safe: null en server).
   // El effect solo resuelve el estado remoto; si no hay config el botón
   // queda en 'config' (disabled) sin consultar el relay.
-  const [state, setState] = useState<SyncState>(() => (getSyncConfig() ? 'pending' : 'config'))
+  const [state, setState] = useState<SyncState>('config')
   const [lastSync, setLastSync] = useState('')
 
   useEffect(() => {

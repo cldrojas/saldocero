@@ -202,8 +202,8 @@ describe('useBudget hook (SQLite-backed)', () => {
 
     const { result } = renderHook(() => useBudget())
 
-    // migration runs first on bootstrap
-    expect(mockedMigrate.migrateFromLocalStorage).toHaveBeenCalledTimes(1)
+    // migration runs first on bootstrap (after the IndexedDB restore probe)
+    await waitFor(() => expect(mockedMigrate.migrateFromLocalStorage).toHaveBeenCalledTimes(1))
 
     // loadState runs after migration
     await waitFor(() => expect(result.current.accounts).toHaveLength(1))

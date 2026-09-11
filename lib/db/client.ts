@@ -15,7 +15,15 @@ let dbPromise: Promise<Database> | null = null
 export function getSql(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     sqlPromise = import('sql.js').then(async (mod) => {
-      const sql = await mod.default()
+      // Browser: Next.js sirve el WASM desde /public (copiado desde
+      // node_modules/sql.js/dist/sql-wasm.wasm); sin locateFile el bundle
+      // intenta fetchear el .wasm relativo y falla. Node (unit tests): sql.js
+      // resuelve el .wasm desde node_modules con el locateFile por defecto,
+      // así que NO lo sobrescribimos.
+      const isNode = typeof process !== 'undefined' && !!process.versions?.node
+      const sql = isNode
+        ? await mod.default()
+        : await mod.default({ locateFile: () => '/sql-wasm.wasm' })
       sqlSynced = sql
       return sql
     })

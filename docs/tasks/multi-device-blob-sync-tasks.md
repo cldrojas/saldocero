@@ -60,14 +60,14 @@ Fecha: 2026-09-09
 
 ## Batch 5 — E2E y Convergencia
 
-- [ ] 5.1 **[TEST primero]** Playwright e2e dual-device: operar en A → sync → B converge (merge correcto; relay stub en memoria, dev server :3100 con E2E DB aislada)
-- [ ] 5.2 E2E: primer push guiado en fresh device (import legacy → snapshot → hash idempotente)
-- [ ] 5.3 E2E regresión del flujo diario completo (login opcional no existe; recorrido budget completo via UI)
+- [x] 5.1 **[TEST primero]** Playwright e2e dual-device: operar en A → sync → B converge (merge correcto; relay stub en memoria, dev server :3100 con E2E DB aislada)
+- [x] 5.2 E2E: primer push guiado en fresh device (import legacy → snapshot → hash idempotente)
+- [x] 5.3 E2E regresión del flujo diario completo (login opcional no existe; recorrido budget completo via UI)
 
 ## Batch 6 — Verificación y Cierre
 
-- [ ] 6.1 `pnpm test` completo (unit + integration + e2e) verde
-- [ ] 6.2 `pnpm tsc --noEmit` sin errores
+- [x] 6.1 `pnpm test` completo (unit + integration + e2e) verde
+- [x] 6.2 `pnpm tsc --noEmit` sin errores
 - [ ] 6.3 Revisar cobertura del spec: FR-1..FR-6 + FR-DB + FR-UI-HOOK + NFR-1..4 marcados en `spec-multi-device-blob-sync.md`
 - [ ] 6.4 Commit fase de implementación (primer commit separado `docs(plan):` ya hecho al inicio de rama)
 

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, isSameDay, startOfDay } from 'date-fns'
 import { Account, Budget, Transaction, TransactionType } from '@/types'
 import { migrateFromLocalStorage } from '@/lib/migrate-localstorage'
+import { initDb, setDb } from '@/lib/db/client'
+import { loadFromIndexedDB } from '@/lib/db/persistence'
 import { loadState } from './use-budget-commits'
 import {
   computeDailyAllowance,
@@ -143,13 +145,23 @@ export function useBudget() {
     [applyState, runServer]
   )
 
-  // ─── Bootstrap: migrate localStorage → SQLite, then load (task 2.2) ────
+  // ─── Bootstrap: restore persisted snapshot → migrate localStorage → load ──
   useEffect(() => {
     let cancelled = false
 
     async function bootstrap() {
       try {
-        await migrateFromLocalStorage()
+        // El snapshot en IndexedDB es la copia más reciente del estado (se
+        // persiste tras cada sync/merge). Si existe, restaurarlo como la DB
+        // inicial para que un reload post-merge siga viendo el estado
+        // convergido en lugar de arrancar vacío. Si no, migrar legacy.
+        const snapshot = await loadFromIndexedDB().catch(() => null)
+        if (cancelled) return
+        if (snapshot) {
+          setDb(await initDb(snapshot))
+        } else {
+          await migrateFromLocalStorage()
+        }
         if (cancelled) return
         await refresh()
       } catch (error) {

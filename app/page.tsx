@@ -117,6 +117,15 @@ export default function DailyBudgetApp() {
               )}
             </ErrorBoundary>
           )}
+
+          {/* La sincronización no depende del setup (FR-4): un dispositivo fresh
+              (sin presupuesto todavía) puede configurar un sync code/token para
+              descargar los datos de otro dispositivo o hacer su primer push. */}
+          {!isSetup && (
+            <ErrorBoundary>
+              <SyncSettings />
+            </ErrorBoundary>
+          )}
         </main>
       </div>
     </ErrorBoundary>
