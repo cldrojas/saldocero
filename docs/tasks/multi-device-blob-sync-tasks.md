@@ -46,11 +46,11 @@ Fecha: 2026-09-09
 
 ## Batch 3 — Protocolo de Sync (server)
 
-- [ ] 3.1 **[TEST primero]** Integration tests del protocolo: 401 sin credenciales, GET/POST round-trip, meta hash, 409 concurrency re-check (blob mock en memoria)
-- [ ] 3.2 Crear `lib/blob-relay.ts`: wrapper `@vercel/blob` con namespace `saldo-cero-<syncCode>.db`
-- [ ] 3.3 Crear `app/api/sync/meta/route.ts` (GET metadata) + `app/api/sync/route.ts` (GET snapshot, POST upload con re-check meta → 409)
-- [ ] 3.4 Crear `app/api/sync/import/route.ts` (primer push guiado del `.db` legacy vía better-sqlite3, hash idempotente) — **[TEST primero]** con `.db` legacy sintético
-- [ ] 3.5 Documentar/crear env vars: `SYNC_TOKEN` (server), y `BLOB_READ_WRITE_TOKEN` en dev (dashboard Vercel para prod)
+- [x] 3.1 **[TEST primero]** Integration tests del protocolo: 401 sin credenciales, GET/POST round-trip, meta hash, 409 concurrency re-check (blob mock en memoria)
+- [x] 3.2 Crear `lib/blob-relay.ts`: wrapper `@vercel/blob` con namespace `saldo-cero-<syncCode>.db`
+- [x] 3.3 Crear `app/api/sync/meta/route.ts` (GET metadata) + `app/api/sync/route.ts` (GET snapshot, POST upload con re-check meta → 409)
+- [x] 3.4 Crear `app/api/sync/import/route.ts` (primer push guiado del `.db` legacy vía better-sqlite3, hash idempotente) — **[TEST primero]** con `.db` legacy sintético
+- [x] 3.5 Documentar/crear env vars: `SYNC_TOKEN` (server), y `BLOB_READ_WRITE_TOKEN` en dev (dashboard Vercel para prod)
 
 ## Batch 4 — UI de Sync
 
