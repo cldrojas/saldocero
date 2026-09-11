@@ -186,7 +186,32 @@ export const translations = {
     authRateLimit: 'Too many attempts. Please try again in a moment.',
     authCheckEmail: 'Check your email to confirm your account, then sign in.',
     authSignOut: 'Sign Out',
-    authLoading: 'Loading...'
+    authLoading: 'Loading...',
+
+    // Sync
+    syncSync: 'Sync',
+    syncSyncing: 'Syncing…',
+    syncSynced: 'Synced',
+    syncLastSync: 'Last sync: {time}',
+    syncError: 'Sync failed',
+    syncErrorDescription: 'Check your connection and sync code, then try again.',
+    syncConfigPending: 'Sync not configured',
+    syncConfigPendingDescription: 'Add your sync code and token in Settings.',
+    syncFirstPushPending: 'First sync pending',
+    syncFirstPushPendingDescription: 'Push your data for the first time.',
+    syncSettingsTitle: 'Sync settings',
+    syncCodeLabel: 'Sync code',
+    syncTokenLabel: 'Sync token',
+    syncSave: 'Save',
+    syncSaveDescription: 'Your sync code and token are stored only on this device.',
+    syncConfigSaved: 'Config saved',
+    syncFirstPushTitle: 'Push data for the first time?',
+    syncFirstPushDescription: 'Your current data will be uploaded as the initial snapshot. You will not be able to push again until the relay is empty.',
+    syncUploadFirst: 'Upload data for the first time',
+    syncBackupsTitle: 'Local backups',
+    syncRestore: 'Restore',
+    syncRestored: 'Backup restored',
+    syncNoBackups: 'No backups yet'
   }, es: {
     // General
     appName: 'Saldo Cero',
@@ -366,7 +391,32 @@ export const translations = {
     authRateLimit: 'Demasiados intentos. Inténtalo de nuevo en un momento.',
     authCheckEmail: 'Revisa tu correo para confirmar tu cuenta y luego inicia sesión.',
     authSignOut: 'Cerrar sesión',
-    authLoading: 'Cargando...'
+    authLoading: 'Cargando...',
+
+    // Sync
+    syncSync: 'Sincronizar',
+    syncSyncing: 'Sincronizando…',
+    syncSynced: 'Sincronizado',
+    syncLastSync: 'Última sincronización: {time}',
+    syncError: 'Error de sincronización',
+    syncErrorDescription: 'Revisa tu conexión y tu sync code, luego intenta de nuevo.',
+    syncConfigPending: 'Sincronización no configurada',
+    syncConfigPendingDescription: 'Agrega tu sync code y token en Configuración.',
+    syncFirstPushPending: 'Primera sincronización pendiente',
+    syncFirstPushPendingDescription: 'Sube tus datos por primera vez.',
+    syncSettingsTitle: 'Configuración de sincronización',
+    syncCodeLabel: 'Código de sincronización',
+    syncTokenLabel: 'Token de sincronización',
+    syncSave: 'Guardar',
+    syncSaveDescription: 'Tu sync code y token se guardan solo en este dispositivo.',
+    syncConfigSaved: 'Configuración guardada',
+    syncFirstPushTitle: '¿Subir datos por primera vez?',
+    syncFirstPushDescription: 'Tus datos actuales se subirán como primer snapshot. No podrás volver a subir hasta que el relay esté vacío.',
+    syncUploadFirst: 'Subir datos por primera vez',
+    syncBackupsTitle: 'Copias de seguridad locales',
+    syncRestore: 'Restaurar',
+    syncRestored: 'Copia restaurada',
+    syncNoBackups: 'No hay copias todavía'
   }
 }
 
@@ -396,7 +446,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
     const browserLang = navigator.language.split('-')[0].toLowerCase()
     if (browserLang === 'en' || browserLang === 'es') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration: detect browser prefs post-mount
       setLanguage(browserLang as Language)
     }
   }, [])

@@ -3,6 +3,8 @@
 import { Button } from '@/components/ui/button'
 import { useBudget } from '@/hooks/use-budget'
 import { HeaderMenu } from '@/components/header-menu'
+import { SyncButton } from '@/components/sync/sync-button'
+import { SyncSettings } from '@/components/sync/sync-settings'
 import { useLanguage } from '@/contexts/language-context'
 import { SetupForm } from '@/components/setup-form'
 import { DailyBudgetStatus } from '@/components/daily-budget-status'
@@ -43,11 +45,14 @@ export default function DailyBudgetApp() {
         <header className="border-b">
           <div className="container flex items-center justify-between h-16 px-4">
             <h1 className="text-xl font-bold">{t('appName')}</h1>
-            <HeaderMenu
-              budget={budget}
-              onUpdateConfig={updateConfig}
-              onClearData={clearData}
-            />
+            <div className="flex items-center gap-2">
+              <SyncButton />
+              <HeaderMenu
+                budget={budget}
+                onUpdateConfig={updateConfig}
+                onClearData={clearData}
+              />
+            </div>
           </div>
         </header>
 
@@ -90,6 +95,10 @@ export default function DailyBudgetApp() {
                       accounts={accounts}
                       remainingDays={getRemainingDays()}
                     />
+                  </ErrorBoundary>
+
+                  <ErrorBoundary>
+                    <SyncSettings />
                   </ErrorBoundary>
 
                   <Navbar

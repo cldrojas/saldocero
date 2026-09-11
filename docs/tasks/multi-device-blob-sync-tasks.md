@@ -54,9 +54,9 @@ Fecha: 2026-09-09
 
 ## Batch 4 — UI de Sync
 
-- [ ] 4.1 Crear `components/sync/sync-button.tsx`: botón "Sincronizar" con estados (synced / pending / last sync / error)
-- [ ] 4.2 Crear `components/sync/sync-settings.tsx`: configuración code + token + primer push guiado + lista de backups/restore
-- [ ] 4.3 Integrar en la página correspondiente (invitación al primer push si no hay snapshot, design US-5)
+- [x] 4.1 Crear `components/sync/sync-button.tsx`: botón "Sincronizar" con estados (synced / pending / last sync / error)
+- [x] 4.2 Crear `components/sync/sync-settings.tsx`: configuración code + token + primer push guiado + lista de backups/restore
+- [x] 4.3 Integrar en la página correspondiente (invitación al primer push si no hay snapshot, design US-5)
 
 ## Batch 5 — E2E y Convergencia
 

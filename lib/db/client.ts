@@ -51,3 +51,26 @@ export function getDb(): Promise<Database> {
   if (!dbPromise) dbPromise = initDb()
   return dbPromise
 }
+
+/**
+ * Exports the current database as a Uint8Array snapshot (the sync unit).
+ */
+export function exportDb(db: Database): Uint8Array {
+  return db.export()
+}
+
+/**
+ * Swaps the process-wide singleton database. Used after a merge so the rest
+ * of the app reads the converged database.
+ */
+export function setDb(db: Database): void {
+  dbPromise = Promise.resolve(db)
+}
+
+/**
+ * Resets the singleton so the next getDb() creates a fresh database.
+ * Used by logout/restore flows and tests.
+ */
+export function resetDb(): void {
+  dbPromise = null
+}

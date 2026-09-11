@@ -15,6 +15,7 @@ export type Meta = {
 export type MetaRead = {
   updated_at: string
   device_id: string
+  snapshot_hash: string | null
 }
 
 function selectMeta(db: Database): Meta | null {
@@ -38,6 +39,7 @@ export async function getMeta(): Promise<MetaRead> {
   return {
     updated_at: meta?.updated_at ?? '',
     device_id: meta?.device_id ?? '',
+    snapshot_hash: meta?.snapshot_hash ?? null,
   }
 }
 
@@ -63,4 +65,22 @@ export async function setMeta(fields: Partial<Meta>): Promise<void> {
       [fields.updated_at ?? null, fields.device_id ?? null, fields.snapshot_hash ?? null]
     )
   }
+}
+
+const DEVICE_ID_KEY = 'saldo-cero-device-id'
+
+/**
+ * Returns the stable device id for this browser (localStorage-backed UUID).
+ * Created once and reused for every sync so merges are attributable.
+ */
+export function getActiveDeviceId(): string {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return 'server'
+  const existing = localStorage.getItem(DEVICE_ID_KEY)
+  if (existing) return existing
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  localStorage.setItem(DEVICE_ID_KEY, id)
+  return id
 }
