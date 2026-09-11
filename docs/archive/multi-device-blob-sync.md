@@ -11,7 +11,7 @@ Este PRD **reemplaza la decisión diferida** del change `sqlite-local` (D7: "syn
 `multi-device-blob-sync`
 
 ### 1.3 Estado
-**Propuesto.** Sin implementar. Se apoya en `sqlite-local` (implementado: Server Actions + better-sqlite3, schema de 4 tablas). Introduce un pivote de capa de datos (server-side → client-side WASM) y una migración de modelo (tombstones + device_id).
+**Implementado y archivado (2026-09-11).** Acceptance verde en `47adc39` (rama `feat/sqlite-local`): `pnpm tsc --noEmit` clean, 182/182 unit, 9/9 e2e. Verdicto `sdd-verify`: **PASS WITH WARNINGS** (12/12 requisitos); los 4 WARNINGs (W1-W4) corregidos en follow-up de apply. Artefactos completos en `docs/archive/`.
 
 ---
 

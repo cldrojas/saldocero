@@ -4,7 +4,7 @@
 `multi-device-blob-sync`
 
 ## Estado
-**En especificación.** Pivote local-first: la capa de datos migra de Server Actions + better-sqlite3 (server-side) a sql.js (WASM en el browser) con sync manual vía Vercel Blob como relay. Basado en el PRD `docs/requirements/multi-device-blob-sync.md` y la proposal `docs/requirements/proposal-multi-device-blob-sync.md`.
+**Implementado, verificado y archivado (2026-09-11).** Pivote local-first: la capa de datos migra de Server Actions + better-sqlite3 (server-side) a sql.js (WASM en el browser) con sync manual vía Vercel Blob como relay. Verdicto `sdd-verify`: **PASS WITH WARNINGS** — 12/12 requisitos (11 ✅ COVERED, 1 ⚠️ PARTIAL al momento del verify); los 4 WARNINGs corregidos en follow-up (182/182 unit, tsc clean). Checklist de cobertura y verdicto en la sección "Cobertura del spec". Basado en el PRD `docs/requirements/multi-device-blob-sync.md` y la proposal `docs/requirements/proposal-multi-device-blob-sync.md`.
 
 ---
 

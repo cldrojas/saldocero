@@ -68,7 +68,7 @@ Fecha: 2026-09-09
 
 - [x] 6.1 `pnpm test` completo (unit + integration + e2e) verde
 - [x] 6.2 `pnpm tsc --noEmit` sin errores
-- [ ] 6.3 Revisar cobertura del spec: FR-1..FR-6 + FR-DB + FR-UI-HOOK + NFR-1..4 marcados en `spec-multi-device-blob-sync.md`
+- [x] 6.3 Revisar cobertura del spec: FR-1..FR-6 + FR-DB + FR-UI-HOOK + NFR-1..4 marcados en `spec-multi-device-blob-sync.md` (ejecutado por `sdd-verify`: checklist + verdicto en la spec; W1-W4 corregidos en follow-up)
 - [x] 6.4 Commit fase de implementación (primer commit separado `docs(plan):` ya hecho al inicio de rama) — `71c6442`
 
 ---
