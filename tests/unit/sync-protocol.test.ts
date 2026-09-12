@@ -25,6 +25,29 @@ const memoryBlobs = vi.hoisted(() => {
       if (!entry) throw Object.assign(new Error('Blob not found'), { status: 404 })
       return new Response(entry.data as unknown as BodyInit)
     }),
+    // Replica la forma real de @vercel/blob v2: { blobs: [...], hasMore }.
+    list: vi.fn(async ({ prefix }: { prefix?: string }) => {
+      const blobs = [...store.entries()]
+        .filter(([pathname]) => !prefix || pathname.startsWith(prefix))
+        .map(([pathname, entry]) => ({
+          pathname,
+          url: `https://fake.blob.vercel-storage.com/${pathname}`,
+          downloadUrl: `https://fake.blob.vercel-storage.com/${pathname}?download=1`,
+          size: entry.data.length,
+          uploadedAt: new Date(entry.uploadedAt),
+          etag: 'etag',
+        }))
+      return { blobs, hasMore: false }
+    }),
+    // Replica el SDK real: borrar inexistente lanza BlobNotFoundError (la ruta
+    // DELETE lo captura y devuelve 204).
+    del: vi.fn(async (pathname: string | string[]) => {
+      for (const p of Array.isArray(pathname) ? pathname : [pathname]) {
+        if (!store.delete(p)) {
+          throw Object.assign(new Error('Blob not found'), { name: 'BlobNotFoundError', status: 404 })
+        }
+      }
+    }),
     _reset: () => store.clear(),
   }
 })
@@ -33,6 +56,8 @@ vi.mock('@vercel/blob', () => ({
   put: memoryBlobs.put,
   head: memoryBlobs.head,
   get: memoryBlobs.get,
+  list: memoryBlobs.list,
+  del: memoryBlobs.del,
 }))
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

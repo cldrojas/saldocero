@@ -269,3 +269,156 @@ export async function syncNow(conf: SyncConfig): Promise<SyncResult> {
     return { action: 'error', error: err instanceof SyncAuthError ? 'auth' : 'network' }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Claim-based QR export/import (qr-sync-export). A claim is a short-lived
+// capability issued by the relay snapshot (POST /api/sync/claim). Device A
+// exports its snapshot as a claim and renders it as a QR; device B redeems the
+// claim by token (GET /api/sync/claim/:token) with no auth headers — the token
+// itself is the capability.
+// ---------------------------------------------------------------------------
+
+export type ClaimIssueResult =
+  | { ok: true; token: string; syncCode: string; hash: string; expiresAt: number }
+  | { ok: false; error: string }
+
+export type ClaimFetchError =
+  | 'claim_expired'
+  | 'claim_consumed'
+  | 'claim_not_found'
+  | 'snapshot_not_found'
+  | 'network'
+  | `http-${number}`
+
+export type ClaimFetchResult =
+  | { ok: true; syncCode: string; hash: string; updatedAt: string; bytes: Uint8Array }
+  | { ok: false; error: ClaimFetchError }
+
+/**
+ * Builds the deep link embedded in the export QR: a GET against the sync-import
+ * page with both the sync code and the claim token as query params.
+ */
+export function buildClaimUrl(origin: string, syncCode: string, token: string): string {
+  return `${origin}/sync-import?c=${encodeURIComponent(syncCode)}&claim=${encodeURIComponent(token)}`
+}
+
+/**
+ * Issues a claim against the latest relay snapshot. The snapshot must already
+ * exist (syncNow pushed at least once). 401 → SyncAuthError (like syncNow).
+ */
+export async function createClaim(conf: SyncConfig): Promise<ClaimIssueResult> {
+  const res = await fetchJson('/api/sync/claim', {
+    method: 'POST',
+    headers: authHeaders(conf),
+  }).catch(() => null)
+  if (!res) return { ok: false, error: 'network' }
+  if (res.status === 401) throw new SyncAuthError('unauthorized')
+  if (res.status === 404) return { ok: false, error: 'snapshot_not_found' }
+  if (res.status !== 200) return { ok: false, error: `http-${res.status}` }
+  const data = res.data as { token: string; syncCode: string; hash: string; expiresAt: number }
+  return {
+    ok: true,
+    token: data.token,
+    syncCode: data.syncCode,
+    hash: data.hash,
+    expiresAt: data.expiresAt,
+  }
+}
+
+/**
+ * Redeems a claim by capability token. No auth headers: possession of the token
+ * (or the QR that encodes it) is sufficient. 404 bodies carry the precise
+ * failure reason mapped onto ClaimFetchError.
+ */
+export async function fetchClaim(token: string): Promise<ClaimFetchResult> {
+  const res = await fetchJson(`/api/sync/claim/${encodeURIComponent(token)}`).catch(() => null)
+  if (!res) return { ok: false, error: 'network' }
+  if (res.status === 200) {
+    const data = res.data as { bytes: string; hash: string; updatedAt: string; syncCode: string }
+    return {
+      ok: true,
+      syncCode: data.syncCode,
+      hash: data.hash,
+      updatedAt: data.updatedAt,
+      bytes: base64ToBytes(data.bytes),
+    }
+  }
+  if (res.status === 404) {
+    const rawError = (res.data as { error?: string } | null)?.error
+    if (
+      rawError === 'claim_expired' ||
+      rawError === 'claim_consumed' ||
+      rawError === 'claim_not_found' ||
+      rawError === 'snapshot_not_found'
+    ) {
+      return { ok: false, error: rawError }
+    }
+    return { ok: false, error: 'claim_not_found' }
+  }
+  return { ok: false, error: `http-${res.status}` }
+}
+
+/**
+ * Applies a redeemed claim to this device: best-effort pre-import backup,
+ * local ↔ remote merge (pure), singleton swap, IndexedDB persistence, and
+ * sync_meta stamp. Also auto-fills the persisted sync code when this device
+ * has none, or (replaceCode) when the user opted to replace a different one.
+ */
+export async function applyClaimImport(
+  data: Extract<ClaimFetchResult, { ok: true }>,
+  opts: { replaceCode: boolean }
+): Promise<SyncResult> {
+  const remoteDb = await initDb(data.bytes)
+
+  const localDb = await getDb()
+  const localBytes = exportDb(localDb)
+  try {
+    await saveBackup(localBytes, `pre-claim-${Date.now()}`)
+  } catch {
+    // El backup es best-effort: un fallo de IndexedDB no debe bloquear el import
+  }
+
+  const merged = mergeDatabases(localDb, remoteDb, getActiveDeviceId())
+  setDb(merged)
+  await saveToIndexedDbSafe(merged)
+
+  // setMeta directly (not the private markSynced helper, which requires a
+  // SyncConfig we may not have when SYNC_TOKEN is absent on this device).
+  await setMeta({
+    snapshot_hash: data.hash,
+    updated_at: data.updatedAt,
+    device_id: getActiveDeviceId(),
+  })
+
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    const current = localStorage.getItem(CODE_KEY)
+    if (!current) {
+      localStorage.setItem(CODE_KEY, data.syncCode)
+    } else if (current !== data.syncCode && opts.replaceCode) {
+      localStorage.setItem(CODE_KEY, data.syncCode)
+    }
+  }
+
+  return { action: 'merged', hash: data.hash, updatedAt: data.updatedAt }
+}
+
+/**
+ * Convenience wrapper: fetches the claim, then applies it. Errors are folded
+ * into a tagged { action: 'error', error } result, never thrown.
+ */
+export async function importFromClaim(
+  token: string,
+  opts: { replaceCode: boolean }
+): Promise<SyncResult | { action: 'error'; error: ClaimFetchError }> {
+  const data = await fetchClaim(token)
+  if (!data.ok) return { action: 'error', error: data.error }
+  return applyClaimImport(data, opts)
+}
+
+/**
+ * Reads the persisted sync code, or null if not configured yet.
+ */
+export function getSyncCode(): string | null {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null
+  return localStorage.getItem(CODE_KEY)
+}

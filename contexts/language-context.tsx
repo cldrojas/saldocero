@@ -211,7 +211,28 @@ export const translations = {
     syncBackupsTitle: 'Local backups',
     syncRestore: 'Restore',
     syncRestored: 'Backup restored',
-    syncNoBackups: 'No backups yet'
+    syncNoBackups: 'No backups yet',
+
+    // Sync QR
+    'sync.export.title': 'Share via QR',
+    'sync.export.countdown': 'Expires in {mm}:{ss}',
+    'sync.export.claim_token_label': 'Claim code (typeable)',
+    'sync.export.done': 'Done / Invalidate',
+    'sync.import.title': 'Scan QR or enter code',
+    'sync.import.camera_tab': 'Camera',
+    'sync.import.manual_tab': 'Enter code',
+    'sync.import.enter_token': 'Paste claim token here',
+    'sync.import.button': 'Import',
+    'sync.import.preview_title': 'Snapshot preview',
+    'sync.import.preview_date': 'Snapshot from {date}',
+    'sync.import.preview_hash': 'Hash: {shortHash}',
+    'sync.import.confirm': 'Confirm and import',
+    'sync.import.cancel': 'Cancel',
+    'sync.import.token_banner': 'Configure your deployment token in Settings to sync',
+    'sync.claim.error_expired': 'QR code expired (15 min). Generate a new one from the source device.',
+    'sync.claim.error_consumed': 'This QR code was already used. Generate a new one from the source device.',
+    'sync.claim.error_not_found': 'Claim code not found.',
+    'sync.claim.replace_confirm': 'This device already has a different sync code (current: {current}, new: {new}). Replace?'
   }, es: {
     // General
     appName: 'Saldo Cero',
@@ -416,7 +437,28 @@ export const translations = {
     syncBackupsTitle: 'Copias de seguridad locales',
     syncRestore: 'Restaurar',
     syncRestored: 'Copia restaurada',
-    syncNoBackups: 'No hay copias todavía'
+    syncNoBackups: 'No hay copias todavía',
+
+    // Sync QR
+    'sync.export.title': 'Compartir vía QR',
+    'sync.export.countdown': 'Expira en {mm}:{ss}',
+    'sync.export.claim_token_label': 'Código de claim (tipable)',
+    'sync.export.done': 'Listo / Invalidar',
+    'sync.import.title': 'Escanear QR o ingresar código',
+    'sync.import.camera_tab': 'Cámara',
+    'sync.import.manual_tab': 'Ingresar código',
+    'sync.import.enter_token': 'Pega el claim token aquí',
+    'sync.import.button': 'Importar',
+    'sync.import.preview_title': 'Vista previa del snapshot',
+    'sync.import.preview_date': 'Snapshot del {date}',
+    'sync.import.preview_hash': 'Hash: {shortHash}',
+    'sync.import.confirm': 'Confirmar e importar',
+    'sync.import.cancel': 'Cancelar',
+    'sync.import.token_banner': 'Configura tu token de despliegue en Settings para sincronizar',
+    'sync.claim.error_expired': 'El código QR ha expirado (15 min). Genera uno nuevo desde el dispositivo origen.',
+    'sync.claim.error_consumed': 'Este código QR ya fue usado. Genera uno nuevo desde el dispositivo origen.',
+    'sync.claim.error_not_found': 'Código de claim no encontrado.',
+    'sync.claim.replace_confirm': 'Este dispositivo ya tiene un código de sync distinto (actual: {current}, nuevo: {new}). ¿Reemplazar?'
   }
 }
 

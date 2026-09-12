@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import ConfirmDialog from '@/components/modals/confirm-dialog'
+import SyncQrModal from '@/components/sync/sync-qr-modal'
 import { useLanguage } from '@/contexts/language-context'
 import { getSyncConfig, setSyncConfig, syncNow } from '@/lib/sync-client'
 import type { SyncConfig, SyncResult } from '@/lib/sync-client'
@@ -27,6 +28,7 @@ export function SyncSettings() {
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<SyncResult | null>(null)
   const [restoredLabel, setRestoredLabel] = useState<string | null>(null)
+  const [qrMode, setQrMode] = useState<'export' | 'import' | null>(null)
 
   const hasSync = config !== null
   const needsFirstPush = hasSync && meta !== null && !meta.snapshot_hash
@@ -142,6 +144,25 @@ export function SyncSettings() {
         <p className="text-sm text-green-600">{t('syncSynced')}</p>
       )}
 
+      <section className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          onClick={() => setQrMode('export')}
+          disabled={busy || !config?.syncCode}
+          data-testid="qr-export-button"
+        >
+          {t('sync.export.title')}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => setQrMode('import')}
+          disabled={busy}
+          data-testid="qr-import-button"
+        >
+          {t('sync.import.title')}
+        </Button>
+      </section>
+
       <section>
         <h3 className="font-medium">{t('syncBackupsTitle')}</h3>
         {backups.length === 0 ? (
@@ -179,6 +200,22 @@ export function SyncSettings() {
         description={t('syncFirstPushDescription')}
         confirmText={t('confirm')}
         cancelText={t('cancel')}
+      />
+
+      <SyncQrModal
+        key={qrMode ?? 'closed'}
+        open={qrMode !== null}
+        mode={qrMode ?? 'export'}
+        syncCode={config?.syncCode ?? undefined}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQrMode(null)
+            // La importación modifica la DB via setDb pero el state de la app no
+            // observa ese cambio en vivo (patrón IDB boot). Recargamos como hace
+            // SyncButton tras un merge: el boot re-leerá la DB ya importada.
+            window.location.reload()
+          }
+        }}
       />
     </div>
   )
