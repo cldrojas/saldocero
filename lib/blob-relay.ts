@@ -8,11 +8,21 @@ import { put, get, head, list, del, type GetBlobResult } from '@vercel/blob'
 // concurrencia sin descargar el snapshot completo (D7/D14).
 //
 // Nota @vercel/blob v2: `get` devuelve `GetBlobResult | null` (con `.stream`)
-// y tanto `get` como `put` exigen `access`. El relay expone bytes
-// (Uint8Array) para que las rutas no dependan de la forma del SDK.
+// y tanto `get` como `put` exigen `access`. El access DEBE coincidir con el
+// tipo de store (public|private); si se usa 'public' en un store privado,
+// Vercel lanza "Cannot use public access on a private store". El relay
+// funciona con store privado: el cliente nunca recibe URLs de Blob — todo
+// pasa por las rutas /api/sync/* server-side, y los bytes se leen por stream
+// con el propio token del entorno. El relay expone bytes (Uint8Array) para
+// que las rutas no dependan de la forma del SDK.
 
 const SNAPSHOT_EXT = '.db'
 const META_EXT = '.db.json'
+
+// Tipo de acceso del store. 'private' es lo compatible con tiendas privadas
+// (default en plans actuales); dejar constante para cambios en un solo punto.
+export const BLOB_ACCESS = 'private' as const
+type BlobAccess = typeof BLOB_ACCESS
 
 export const snapshotPath = (syncCode: string) => `saldo-cero-${syncCode}${SNAPSHOT_EXT}`
 export const metaPath = (syncCode: string) => `saldo-cero-${syncCode}${META_EXT}`
@@ -44,7 +54,7 @@ export interface ClaimMeta {
 
 export async function putClaim(meta: ClaimMeta, token: string): Promise<void> {
   await put(claimPath(token), JSON.stringify(meta), {
-    access: 'public',
+    access: BLOB_ACCESS,
     allowOverwrite: true,
     addRandomSuffix: false,
   })
@@ -149,7 +159,7 @@ async function resultToBytes(res: Response | GetBlobResult): Promise<Uint8Array>
 
 async function getOrNull(pathname: string): Promise<Uint8Array | null> {
   try {
-    const res = await get(pathname, { access: 'public' })
+    const res = await get(pathname, { access: BLOB_ACCESS })
     if (!res) return null // SDK real: no existe → null (no lanza)
     return await resultToBytes(res)
   } catch {
@@ -188,7 +198,7 @@ export async function putSnapshot(
   const dbPath = snapshotPath(syncCode)
   // Buffer: aceptado por PutBody y `instanceof Uint8Array` (compat mock/tests)
   await put(dbPath, Buffer.from(bytes), {
-    access: 'public',
+    access: BLOB_ACCESS,
     allowOverwrite: true,
     addRandomSuffix: false,
   })
@@ -203,7 +213,7 @@ export async function putSnapshot(
   const meta: SnapshotMeta = { hash, updatedAt, size }
 
   await put(metaPath(syncCode), JSON.stringify(meta), {
-    access: 'public',
+    access: BLOB_ACCESS,
     allowOverwrite: true,
     addRandomSuffix: false,
   })
