@@ -5,7 +5,7 @@ import { getDb } from '@/lib/db'
 export type Account = {
   id: string
   name: string
-  type: 'daily' | 'savings' | 'investment' | 'custom'
+  type: 'daily' | 'savings' | 'investment' | 'custom' | 'expense'
   icon: string
   hidden: number
   balance: number  // derivado derivado de SUM(transactions)
@@ -22,7 +22,7 @@ export async function addAccount({
   icon = 'wallet'
 }: {
   name: string
-  type: 'daily' | 'savings' | 'investment' | 'custom'
+  type: 'daily' | 'savings' | 'investment' | 'custom' | 'expense'
   icon?: string
 }) {
   const db = getDb()

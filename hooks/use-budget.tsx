@@ -18,7 +18,7 @@ import {
   isDefaultAccountType,
   toDateIso,
   toHookAccount,
-  toHookBudget,
+  toHookBudget
 } from './use-budget-derivation'
 import {
   addAccount as optimisticAddAccount,
@@ -30,7 +30,7 @@ import {
   transferFunds as optimisticTransferFunds,
   updateAccount as optimisticUpdateAccount,
   updateConfig as optimisticUpdateConfig,
-  updateTransaction as optimisticUpdateTransaction,
+  updateTransaction as optimisticUpdateTransaction
 } from './use-budget-actions'
 import * as commits from './use-budget-commits'
 
@@ -39,7 +39,7 @@ const FALLBACK_BUDGET: Budget = {
   startDate: undefined,
   endDate: undefined,
   autoSave: true,
-  mode: 'daily',
+  mode: 'daily'
 }
 
 interface StateSnapshot {
@@ -116,7 +116,7 @@ export function useBudget() {
       amount,
       fromAccount,
       toAccount,
-      description,
+      description
     }: {
       amount: number
       fromAccount: string
@@ -130,7 +130,7 @@ export function useBudget() {
           amount: intAmount,
           fromAccount,
           toAccount,
-          description,
+          description
         })
       )
       void runServer(() =>
@@ -138,7 +138,7 @@ export function useBudget() {
           amount: intAmount,
           fromAccount,
           toAccount,
-          description,
+          description
         })
       )
     },
@@ -211,7 +211,7 @@ export function useBudget() {
           amount: leftover,
           fromAccount: daily.id,
           toAccount: savings.id,
-          description: 'Daily budget savings',
+          description: 'Daily budget savings'
         })
       }
     }
@@ -263,7 +263,7 @@ export function useBudget() {
     ({
       startAmount,
       endDate,
-      mode = 'daily',
+      mode = 'daily'
     }: {
       startAmount: number
       endDate?: Date
@@ -272,16 +272,18 @@ export function useBudget() {
       const next = optimisticSetupBudget(stateRef.current, {
         startAmount,
         endDate,
-        mode,
+        mode
       })
       applyState(next)
       setIsSetup(true)
       setLastCheckedDay(getToday())
-      void commits.commitSetupBudget({
-        startAmount,
-        endDate: endDate ? toDateIso(endDate) : undefined,
-        mode,
-      }).then(refresh)
+      void commits
+        .commitSetupBudget({
+          startAmount,
+          endDate: endDate ? toDateIso(endDate) : undefined,
+          mode
+        })
+        .then(refresh)
     },
     [applyState, refresh]
   )
@@ -291,7 +293,7 @@ export function useBudget() {
       startAmount,
       endDate,
       mode,
-      autoSave,
+      autoSave
     }: {
       startAmount?: number
       endDate?: Date
@@ -302,7 +304,7 @@ export function useBudget() {
         startAmount,
         endDate,
         mode,
-        autoSave,
+        autoSave
       })
       applyState(next)
       void runServer(() =>
@@ -310,7 +312,7 @@ export function useBudget() {
           startAmount,
           endDate: endDate !== undefined ? toDateIso(endDate) : undefined,
           mode,
-          autoSave,
+          autoSave
         })
       )
     },
@@ -321,7 +323,7 @@ export function useBudget() {
     const snapshot = stateRef.current
     applyState({
       ...snapshot,
-      budget: { ...snapshot.budget, autoSave: !snapshot.budget.autoSave },
+      budget: { ...snapshot.budget, autoSave: !snapshot.budget.autoSave }
     })
     void runServer(commits.commitToggleAutoSave)
   }, [applyState, runServer])
@@ -339,7 +341,7 @@ export function useBudget() {
       amount,
       description,
       account,
-      date = new Date(),
+      date = new Date()
     }: {
       type: TransactionType
       amount: number
@@ -363,9 +365,7 @@ export function useBudget() {
     (transactionId: string, refund: boolean = true) => {
       const snapshot = stateRef.current
       if (!snapshot.transactions.some((t) => t.id === transactionId)) return
-      applyState(
-        optimisticRemoveTransaction(snapshot, transactionId, refund)
-      )
+      applyState(optimisticRemoveTransaction(snapshot, transactionId, refund))
       void runServer(() =>
         commits.commitRemoveTransaction(transactionId, refund)
       )
@@ -452,7 +452,7 @@ export function useBudget() {
     transferFunds,
     updateAccount,
     updateConfig,
-    updateTransaction,
+    updateTransaction
   }
 }
 
