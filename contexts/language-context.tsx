@@ -194,20 +194,8 @@ export const translations = {
     syncSynced: 'Synced',
     syncLastSync: 'Last sync: {time}',
     syncError: 'Sync failed',
-    syncErrorDescription: 'Check your connection and sync code, then try again.',
-    syncConfigPending: 'Sync not configured',
-    syncConfigPendingDescription: 'Add your sync code and token in Settings.',
-    syncFirstPushPending: 'First sync pending',
-    syncFirstPushPendingDescription: 'Push your data for the first time.',
     syncSettingsTitle: 'Sync settings',
-    syncCodeLabel: 'Sync code',
-    syncTokenLabel: 'Sync token',
-    syncSave: 'Save',
-    syncSaveDescription: 'Your sync code and token are stored only on this device.',
-    syncConfigSaved: 'Config saved',
-    syncFirstPushTitle: 'Push data for the first time?',
-    syncFirstPushDescription: 'Your current data will be uploaded as the initial snapshot. You will not be able to push again until the relay is empty.',
-    syncUploadFirst: 'Upload data for the first time',
+    
     syncBackupsTitle: 'Local backups',
     syncRestore: 'Restore',
     syncRestored: 'Backup restored',
@@ -228,11 +216,10 @@ export const translations = {
     'sync.import.preview_hash': 'Hash: {shortHash}',
     'sync.import.confirm': 'Confirm and import',
     'sync.import.cancel': 'Cancel',
-    'sync.import.token_banner': 'Configure your deployment token in Settings to sync',
     'sync.claim.error_expired': 'QR code expired (15 min). Generate a new one from the source device.',
     'sync.claim.error_consumed': 'This QR code was already used. Generate a new one from the source device.',
     'sync.claim.error_not_found': 'Claim code not found.',
-    'sync.claim.replace_confirm': 'This device already has a different sync code (current: {current}, new: {new}). Replace?'
+    'sync.claim.error_too_large': 'The snapshot exceeds the maximum QR size allowed.'
   }, es: {
     // General
     appName: 'Saldo Cero',
@@ -420,20 +407,8 @@ export const translations = {
     syncSynced: 'Sincronizado',
     syncLastSync: 'Última sincronización: {time}',
     syncError: 'Error de sincronización',
-    syncErrorDescription: 'Revisa tu conexión y tu sync code, luego intenta de nuevo.',
-    syncConfigPending: 'Sincronización no configurada',
-    syncConfigPendingDescription: 'Agrega tu sync code y token en Configuración.',
-    syncFirstPushPending: 'Primera sincronización pendiente',
-    syncFirstPushPendingDescription: 'Sube tus datos por primera vez.',
     syncSettingsTitle: 'Configuración de sincronización',
-    syncCodeLabel: 'Código de sincronización',
-    syncTokenLabel: 'Token de sincronización',
-    syncSave: 'Guardar',
-    syncSaveDescription: 'Tu sync code y token se guardan solo en este dispositivo.',
-    syncConfigSaved: 'Configuración guardada',
-    syncFirstPushTitle: '¿Subir datos por primera vez?',
-    syncFirstPushDescription: 'Tus datos actuales se subirán como primer snapshot. No podrás volver a subir hasta que el relay esté vacío.',
-    syncUploadFirst: 'Subir datos por primera vez',
+    
     syncBackupsTitle: 'Copias de seguridad locales',
     syncRestore: 'Restaurar',
     syncRestored: 'Copia restaurada',
@@ -454,11 +429,10 @@ export const translations = {
     'sync.import.preview_hash': 'Hash: {shortHash}',
     'sync.import.confirm': 'Confirmar e importar',
     'sync.import.cancel': 'Cancelar',
-    'sync.import.token_banner': 'Configura tu token de despliegue en Settings para sincronizar',
     'sync.claim.error_expired': 'El código QR ha expirado (15 min). Genera uno nuevo desde el dispositivo origen.',
     'sync.claim.error_consumed': 'Este código QR ya fue usado. Genera uno nuevo desde el dispositivo origen.',
     'sync.claim.error_not_found': 'Código de claim no encontrado.',
-    'sync.claim.replace_confirm': 'Este dispositivo ya tiene un código de sync distinto (actual: {current}, nuevo: {new}). ¿Reemplazar?'
+    'sync.claim.error_too_large': 'El snapshot supera el tamaño máximo permitido para QR.'
   }
 }
 

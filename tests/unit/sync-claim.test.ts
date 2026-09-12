@@ -1,22 +1,20 @@
 // tests/unit/sync-claim.test.ts
-// Tests del protocolo de claims por QR (tasks 5.2): emisión (POST), consumo
-// (GET, un solo uso), invalidación (DELETE idempotente) y purga (sweep).
+// Tests del protocolo de claims por QR (tasks 5.2): emisión anónima (POST),
+// consumo (GET, un solo uso), invalidación (DELETE idempotente) y purga (sweep).
 //
-// El relay se simula en memoria con el MISMO contrato que el SDK real
-// (@vercel/blob v2): get devuelve web Response, del lanza BlobNotFoundError,
-// list devuelve { blobs, hasMore }. Incluye además la clase BlobNotFoundError
-// real para que `err instanceof BlobNotFoundError` funcione en la ruta DELETE.
+// Opción B — claim AUTOCONTENIDO: el snapshot completo viaja inline (payload
+// base64) en el sidecar `saldo-cero-claims/<token>.json` y el token del claim es
+// la única capability. NO hay syncCode/SYNC_TOKEN, ni headers de auth, ni relay
+// de snapshots (NFR-3, D-sign). El relay se simula en memoria con el MISMO
+// contrato que el SDK real (@vercel/blob v2): get devuelve web Response, del
+// lanza BlobNotFoundError, list devuelve { blobs, hasMore }. Incluye además la
+// clase BlobNotFoundError real para que `err instanceof BlobNotFoundError`
+// funcione en la ruta DELETE.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { POST } from '@/app/api/sync/claim/route'
 import { GET, DELETE } from '@/app/api/sync/claim/[token]/route'
-import {
-  claimPath,
-  snapshotPath,
-  putSnapshot,
-  sha256Hex,
-  sweepClaims,
-} from '@/lib/blob-relay'
+import { claimPath, sha256Hex, sweepClaims, bytesToBase64 } from '@/lib/blob-relay'
 
 // ─── In-memory @vercel/blob mock (mismo patrón que sync-protocol.test.ts) ──
 const memoryBlobs = vi.hoisted(() => {
@@ -80,49 +78,43 @@ vi.mock('@vercel/blob', () => ({
 }))
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
-const SYNC_CODE = 'qr-claim'
-const SYNC_TOKEN = 'test-token'
-const AUTH_HEADERS = { 'x-sync-code': SYNC_CODE, 'x-sync-token': SYNC_TOKEN }
-
 const DB_BYTES = new TextEncoder().encode('{"version":1,"budget":50000,"expenses":[]}')
 const DB_HASH = sha256Hex(DB_BYTES)
+const DB_B64 = bytesToBase64(DB_BYTES)
 
-type ClaimBody = { token: string; syncCode: string; hash: string; expiresAt: number }
+type ClaimBody = { token: string; hash: string; expiresAt: number }
 
-/** Sube snapshot + metadata (lo que haría un push previo al claim). */
-async function uploadSnapshot(syncCode = SYNC_CODE): Promise<void> {
-  await putSnapshot(syncCode, DB_BYTES, DB_HASH)
+function claimRequest(method: 'POST' | 'GET' | 'DELETE', token?: string): Request {
+  if (method === 'POST') {
+    return new Request('http://localhost/api/sync/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bytes: DB_B64 }),
+    })
+  }
+  return new Request(`http://localhost/api/sync/claim/${token}`, { method })
 }
 
-/** Emite un claim vía la ruta POST real (requiere snapshot + auth). */
-async function issueClaim(body?: {
-  syncCode?: string
-  hash?: string
-  expiresAt?: number
-  status?: 'open' | 'consumed'
-}): Promise<ClaimBody> {
-  const res = await POST(new Request('http://localhost/api/sync/claim', { method: 'POST', headers: AUTH_HEADERS }))
+function routeCtx(token: string) {
+  return { params: Promise.resolve({ token }) }
+}
+
+/** Emite un claim vía la ruta POST real (anónimo, sin headers de auth). */
+async function issueClaim(overrides?: { expiresAt?: number; status?: 'open' | 'consumed' }): Promise<ClaimBody> {
+  const res = await POST(claimRequest('POST'))
   expect(res.status).toBe(200)
   const json = (await res.json()) as ClaimBody
-  if (body) {
+  if (overrides) {
     // Reescritura del sidecar para escenarios de TTL/estado sin tocar timers.
     const entry = memoryBlobs.store.get(claimPath(json.token))
     expect(entry).toBeTruthy()
-    const next = { ...(JSON.parse(new TextDecoder().decode(entry!.data)) as object), ...body }
+    const next = { ...(JSON.parse(new TextDecoder().decode(entry!.data)) as object), ...overrides }
     memoryBlobs.store.set(claimPath(json.token), {
       data: new TextEncoder().encode(JSON.stringify(next)),
       uploadedAt: entry!.uploadedAt,
     })
   }
   return json
-}
-
-function claimRequest(method: 'GET' | 'DELETE', token: string): Request {
-  return new Request(`http://localhost/api/sync/claim/${token}`, { method })
-}
-
-function routeCtx(token: string) {
-  return { params: Promise.resolve({ token }) }
 }
 
 async function claimFetch(method: 'GET' | 'DELETE', token: string) {
@@ -135,38 +127,60 @@ async function claimFetch(method: 'GET' | 'DELETE', token: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   memoryBlobs._reset()
-  process.env.SYNC_TOKEN = SYNC_TOKEN
   vi.mocked(memoryBlobs.put).mockClear()
 })
 
 afterEach(() => {
-  delete process.env.SYNC_TOKEN
+  vi.clearAllMocks()
 })
 
 // ─── POST /api/sync/claim ────────────────────────────────────────────────────
 describe('POST /api/sync/claim', () => {
-  it('401 sin credenciales', async () => {
-    await uploadSnapshot()
+  it('400 bad-request sin body', async () => {
     const res = await POST(new Request('http://localhost/api/sync/claim', { method: 'POST' }))
-    expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'unauthorized' })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad-request' })
   })
 
-  it('401 con token incorrecto', async () => {
-    await uploadSnapshot()
+  it('400 bad-request si bytes no es string', async () => {
     const res = await POST(
       new Request('http://localhost/api/sync/claim', {
         method: 'POST',
-        headers: { 'x-sync-code': SYNC_CODE, 'x-sync-token': 'wrong' },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bytes: 123 }),
       })
     )
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad-request' })
   })
 
-  it('200 emite claim open con TTL de 15 min y sidecar persistido', async () => {
-    await uploadSnapshot()
+  it('400 bad-request si base64 es inválido (decodifica vacío)', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/sync/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bytes: '!@#$' }),
+      })
+    )
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'bad-request' })
+  })
+
+  it('413 claim_too_large si el payload decodificado supera 3 MiB', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/sync/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bytes: 'A'.repeat(4 * 1024 * 1024 + 128) }),
+      })
+    )
+    expect(res.status).toBe(413)
+    expect(await res.json()).toEqual({ error: 'claim_too_large' })
+  })
+
+  it('200 emite claim open con TTL de 15 min y sidecar autocontenido', async () => {
     const claim = await issueClaim()
-    expect(claim.syncCode).toBe(SYNC_CODE)
+    expect(claim.token).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
     expect(claim.hash).toBe(DB_HASH)
     expect(claim.expiresAt - Date.now()).toBeGreaterThan(14 * 60 * 1000)
     expect(claim.expiresAt - Date.now()).toBeLessThanOrEqual(15 * 60 * 1000)
@@ -174,23 +188,18 @@ describe('POST /api/sync/claim', () => {
     const sidecar = memoryBlobs.store.get(claimPath(claim.token))
     expect(sidecar).toBeTruthy()
     const parsed = JSON.parse(new TextDecoder().decode(sidecar!.data)) as {
-      syncCode: string
+      payload: string
       hash: string
+      createdAt: number
+      expiresAt: number
       status: string
     }
-    expect(parsed).toMatchObject({ syncCode: SYNC_CODE, hash: DB_HASH, status: 'open' })
-    // NFR-3: el secret nunca viaja en la respuesta ni en el sidecar.
-    expect(JSON.stringify(claim)).not.toContain(SYNC_TOKEN)
-  })
-
-  it('404 snapshot_not_found si no hubo push previo', async () => {
-    const res = await POST(new Request('http://localhost/api/sync/claim', { method: 'POST', headers: AUTH_HEADERS }))
-    expect(res.status).toBe(404)
-    expect(await res.json()).toEqual({ error: 'snapshot_not_found' })
+    expect(parsed).toMatchObject({ payload: DB_B64, hash: DB_HASH, status: 'open' })
+    expect(typeof parsed.createdAt).toBe('number')
+    expect(typeof parsed.expiresAt).toBe('number')
   })
 
   it('sweep de claims consumidos/vencidos antes de emitir uno nuevo', async () => {
-    await uploadSnapshot()
     const consumed = await issueClaim()
     // Consumir el primer claim vía la ruta (queda 'consumed').
     await claimFetch('GET', consumed.token)
@@ -201,9 +210,8 @@ describe('POST /api/sync/claim', () => {
   })
 
   it('500 claim_issue_failed si falla el blob al persistir el claim', async () => {
-    await uploadSnapshot()
     vi.mocked(memoryBlobs.put).mockRejectedValueOnce(new Error('boom'))
-    const res = await POST(new Request('http://localhost/api/sync/claim', { method: 'POST', headers: AUTH_HEADERS }))
+    const res = await POST(claimRequest('POST'))
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ error: 'claim_issue_failed' })
   })
@@ -224,7 +232,6 @@ describe('GET /api/sync/claim/[token]', () => {
   })
 
   it('404 claim_expired para claim vencido (TTL)', async () => {
-    await uploadSnapshot()
     const claim = await issueClaim({ expiresAt: Date.now() - 1000 })
     const { status, body } = await claimFetch('GET', claim.token)
     expect(status).toBe(404)
@@ -232,7 +239,6 @@ describe('GET /api/sync/claim/[token]', () => {
   })
 
   it('404 claim_consumed en replay (un solo uso → determinista vía sidecar)', async () => {
-    await uploadSnapshot()
     const claim = await issueClaim()
     await claimFetch('GET', claim.token) // primer consumo
     const replay = await claimFetch('GET', claim.token)
@@ -240,40 +246,82 @@ describe('GET /api/sync/claim/[token]', () => {
     expect(replay.body).toEqual({ error: 'claim_consumed' })
   })
 
-  it('200 entrega bytes+hash+syncCode y deja el claim consumed', async () => {
-    await uploadSnapshot()
+  it('carrera: dos GETs concurrentes → exactamente un 200 y un 404 claim_consumed', async () => {
+    const claim = await issueClaim()
+    const path = claimPath(claim.token)
+    const originalGet = vi.mocked(memoryBlobs.get).getMockImplementation()!
+
+    // Interleaving controlado: el primer reader ve 'open'; cualquier lectura
+    // posterior del sidecar ve 'consumed' (el consumo ocurre una sola vez
+    // aunque dos devices escaneen el QR a la vez).
+    let sidecarReads = 0
+    vi.mocked(memoryBlobs.get).mockImplementation(async (pathname: string) => {
+      if (pathname === path) {
+        const entry = memoryBlobs.store.get(path)!
+        const meta = JSON.parse(new TextDecoder().decode(entry.data)) as { status: 'open' | 'consumed' }
+        sidecarReads += 1
+        const status = sidecarReads === 1 ? 'open' : 'consumed'
+        const data = new TextEncoder().encode(JSON.stringify({ ...meta, status }))
+        memoryBlobs.store.set(path, { data, uploadedAt: entry.uploadedAt })
+        return new Response(data as unknown as BodyInit)
+      }
+      return originalGet(pathname)
+    })
+
+    const [a, b] = await Promise.all([
+      claimFetch('GET', claim.token),
+      claimFetch('GET', claim.token),
+    ])
+    const statuses = [a.status, b.status].sort()
+    expect(statuses).toEqual([200, 404])
+    const loser = a.status === 404 ? a : b
+    expect(loser.body).toEqual({ error: 'claim_consumed' })
+  })
+
+  it('200 entrega bytes+hash+createdAt autocontenidos y deja el claim consumed', async () => {
     const claim = await issueClaim()
     const { status, body } = await claimFetch('GET', claim.token)
     expect(status).toBe(200)
     expect(Buffer.from(body!.bytes as string, 'base64')).toEqual(Buffer.from(DB_BYTES))
-    expect(body).toMatchObject({ hash: DB_HASH, syncCode: SYNC_CODE })
-    expect(typeof body!.updatedAt).toBe('string')
+    expect(body).toMatchObject({ hash: DB_HASH })
+    expect(typeof body!.createdAt).toBe('number')
 
     const sidecar = JSON.parse(
       new TextDecoder().decode(memoryBlobs.store.get(claimPath(claim.token))!.data)
     ) as { status: string }
     expect(sidecar.status).toBe('consumed')
-    // NFR-3: la respuesta no expone el secret.
-    expect(JSON.stringify(body)).not.toContain(SYNC_TOKEN)
-  })
-
-  it('404 snapshot_not_found si el snapshot desapareció después de emitir', async () => {
-    await uploadSnapshot()
-    const claim = await issueClaim()
-    memoryBlobs.store.delete(snapshotPath(SYNC_CODE))
-    const { status, body } = await claimFetch('GET', claim.token)
-    expect(status).toBe(404)
-    expect(body).toEqual({ error: 'snapshot_not_found' })
   })
 
   it('500 claim_consume_failed si falla el marcado de consumido', async () => {
-    await uploadSnapshot()
     const claim = await issueClaim()
     // El siguiente put es el de markClaimConsumed (reescritura del sidecar).
     vi.mocked(memoryBlobs.put).mockRejectedValueOnce(new Error('boom'))
     const { status, body } = await claimFetch('GET', claim.token)
     expect(status).toBe(500)
     expect(body).toEqual({ error: 'claim_consume_failed' })
+  })
+})
+
+// ─── NFR-3: sin syncCode ni SYNC_TOKEN en el protocolo ───────────────────────
+describe('NFR-3: sin syncCode/SYNC_TOKEN (grep estructural + assert stricto)', () => {
+  it('el sidecar, la respuesta del POST y la del GET no exponen syncCode ni token de despliegue', async () => {
+    const claim = await issueClaim()
+    // Respuesta del POST: solo { token, hash, expiresAt } — sin syncCode.
+    expect(claim).not.toHaveProperty('syncCode')
+    expect(claim).not.toHaveProperty('syncToken')
+
+    const sidecar = JSON.parse(
+      new TextDecoder().decode(memoryBlobs.store.get(claimPath(claim.token))!.data)
+    ) as Record<string, unknown>
+    expect(sidecar).not.toHaveProperty('syncCode')
+    expect(sidecar).not.toHaveProperty('sync_token')
+    expect(sidecar).not.toHaveProperty('syncToken')
+
+    const { body } = await claimFetch('GET', claim.token)
+    expect(body).not.toHaveProperty('syncCode')
+    expect(body).not.toHaveProperty('sync_token')
+    expect(body).not.toHaveProperty('syncToken')
+    expect(body).not.toHaveProperty('token') // el GET solo devuelve bytes/hash/createdAt
   })
 })
 
@@ -286,7 +334,6 @@ describe('DELETE /api/sync/claim/[token]', () => {
   })
 
   it('204 invalida (borra el sidecar)', async () => {
-    await uploadSnapshot()
     const claim = await issueClaim()
     const { status } = await claimFetch('DELETE', claim.token)
     expect(status).toBe(204)
@@ -309,7 +356,6 @@ describe('DELETE /api/sync/claim/[token]', () => {
 // ─── sweepClaims ─────────────────────────────────────────────────────────────
 describe('sweepClaims', () => {
   it('sweep directo purga claims vencidos y conserva los open vigentes', async () => {
-    await uploadSnapshot()
     const open = await issueClaim()
     // El último POST también corre un sweep interno, así que el expired debe
     // emitirse DESPUÉS del open para que el sweep final lo encuentre.
@@ -322,7 +368,6 @@ describe('sweepClaims', () => {
   })
 
   it('el sweep se combina con el de cada POST: consumido no sobrevive', async () => {
-    await uploadSnapshot()
     const open = await issueClaim()
     const expired = await issueClaim({ expiresAt: Date.now() - 1000 })
     const consumed = await issueClaim()

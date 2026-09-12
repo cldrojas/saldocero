@@ -1,3 +1,7 @@
+// tests/unit/sync-settings.test.tsx
+// SyncSettings post-Opción B: ya no hay form de sync code/token ni flujo
+// first-push (se eliminaron con syncNow/setSyncConfig/getSyncConfig y el banner
+// de sync_meta). Solo resta: acciones QR (export/import) + backups locales.
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
@@ -7,23 +11,24 @@ import { LanguageProvider } from '@/contexts/language-context'
 
 // Hoisted mocks: vitest hoists vi.mock to the top, so the mock fns must live
 // outside the factory to be visible to the tests
-const { syncNowMock, setSyncConfigMock, getSyncConfigMock, getMetaMock, listBackupsMock, restoreBackupMock } = vi.hoisted(() => ({
-  syncNowMock: vi.fn(),
-  setSyncConfigMock: vi.fn(),
-  getSyncConfigMock: vi.fn(),
-  getMetaMock: vi.fn(),
+const { SyncQrModalMock, listBackupsMock, restoreBackupMock } = vi.hoisted(() => ({
+  SyncQrModalMock: vi.fn(),
   listBackupsMock: vi.fn(),
   restoreBackupMock: vi.fn(),
 }))
 
-vi.mock('@/lib/sync-client', () => ({
-  syncNow: (...args: unknown[]) => syncNowMock(...args),
-  setSyncConfig: (...args: unknown[]) => setSyncConfigMock(...args),
-  getSyncConfig: (...args: unknown[]) => getSyncConfigMock(...args),
-}))
-
-vi.mock('@/lib/db/meta', () => ({
-  getMeta: (...args: unknown[]) => getMetaMock(...args),
+// El modal QR se mockea entero para mantener el test hermético (evita cargar
+// sql.js/WASM, el fetch de creación de claims y la lib de QR en el unit test).
+vi.mock('@/components/sync/sync-qr-modal', () => ({
+  default: (props: { open?: boolean; mode?: 'export' | 'import' }) => {
+    SyncQrModalMock(props)
+    if (!props.open) return null
+    return (
+      <div data-testid="qr-modal" data-mode={props.mode}>
+        QR {props.mode}
+      </div>
+    )
+  },
 }))
 
 vi.mock('@/lib/db/persistence', () => ({
@@ -31,9 +36,6 @@ vi.mock('@/lib/db/persistence', () => ({
   restoreBackup: (...args: unknown[]) => restoreBackupMock(...args),
 }))
 
-const NEW_CONF = { syncCode: 'new-code', syncToken: 'new-token' }
-const VALID_CONF = { syncCode: 'test-code', syncToken: 'test-token' }
-const PENDING_META = { snapshot_hash: null, updated_at: null }
 const BACKUPS = [
   { label: 'backup-1', at: '2026-09-11 09:00:00' },
   { label: 'backup-2', at: '2026-09-11 10:00:00' },
@@ -49,83 +51,47 @@ function renderSettings() {
 
 describe('SyncSettings', () => {
   beforeEach(() => {
-    syncNowMock.mockReset()
-    setSyncConfigMock.mockReset()
-    getSyncConfigMock.mockReset()
-    getMetaMock.mockReset()
+    SyncQrModalMock.mockReset()
     listBackupsMock.mockReset()
     restoreBackupMock.mockReset()
   })
 
-  it('saves the sync code and token with setSyncConfig on submit', async () => {
-    getSyncConfigMock.mockReturnValue(null)
-    getMetaMock.mockResolvedValue(PENDING_META)
+  it('solo expone acciones QR + backups: sin form de sync code/token ni first-push', async () => {
+    listBackupsMock.mockResolvedValue([])
+
+    renderSettings()
+
+    expect(screen.getByTestId('qr-export-button')).toBeInTheDocument()
+    expect(screen.getByTestId('qr-import-button')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/sync code|código de sincronización/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/sync token|token de sincronización/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /upload.*first time|subir.*primera vez/i })).not.toBeInTheDocument()
+    expect(await screen.findByText(/no backups|no hay copias/i)).toBeInTheDocument()
+  })
+
+  it('abre el modal QR en modo export al pulsar el botón de exportar', async () => {
     listBackupsMock.mockResolvedValue([])
     const user = userEvent.setup()
 
     renderSettings()
 
-    await user.type(screen.getByLabelText(/sync code|código de sincronización/i), NEW_CONF.syncCode)
-    await user.type(screen.getByLabelText(/sync token|token de sincronización/i), NEW_CONF.syncToken)
-    await user.click(screen.getByRole('button', { name: /save|guardar/i }))
-
-    expect(setSyncConfigMock).toHaveBeenCalledWith(NEW_CONF)
-    expect(await screen.findByText(/config saved|configuración guardada/i)).toBeInTheDocument()
+    await user.click(screen.getByTestId('qr-export-button'))
+    expect(SyncQrModalMock).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, mode: 'export' }))
+    expect(screen.getByTestId('qr-modal')).toHaveAttribute('data-mode', 'export')
   })
 
-  it('does not save when the fields are empty', async () => {
-    getSyncConfigMock.mockReturnValue(null)
-    getMetaMock.mockResolvedValue(PENDING_META)
+  it('abre el modal QR en modo import al pulsar el botón de importar', async () => {
     listBackupsMock.mockResolvedValue([])
     const user = userEvent.setup()
 
     renderSettings()
 
-    await user.click(screen.getByRole('button', { name: /save|guardar/i }))
-
-    expect(setSyncConfigMock).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: /save|guardar/i })).toBeDisabled()
+    await user.click(screen.getByTestId('qr-import-button'))
+    expect(SyncQrModalMock).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, mode: 'import' }))
+    expect(screen.getByTestId('qr-modal')).toHaveAttribute('data-mode', 'import')
   })
 
-  it('shows the first-push invitation and runs syncNow only after confirming', async () => {
-    getSyncConfigMock.mockReturnValue(VALID_CONF)
-    getMetaMock.mockResolvedValue(PENDING_META)
-    listBackupsMock.mockResolvedValue([])
-    syncNowMock.mockResolvedValue({ action: 'synced', hash: 'abc123', updatedAt: '2026-09-11 10:30:00' })
-    const user = userEvent.setup()
-
-    renderSettings()
-
-    const uploadButton = await screen.findByRole('button', { name: /upload.*first time|subir.*primera vez/i })
-    await user.click(uploadButton)
-
-    // Dialog is open, nothing has been sent yet
-    expect(syncNowMock).not.toHaveBeenCalled()
-    await user.click(screen.getByRole('button', { name: /continue|continuar|subir|confirm/i }))
-
-    expect(syncNowMock).toHaveBeenCalledWith(VALID_CONF)
-    await waitFor(() => expect(screen.getByText(/synced|sincronizado/i)).toBeInTheDocument())
-  })
-
-  it('does not run syncNow when the first-push dialog is cancelled', async () => {
-    getSyncConfigMock.mockReturnValue(VALID_CONF)
-    getMetaMock.mockResolvedValue(PENDING_META)
-    listBackupsMock.mockResolvedValue([])
-    const user = userEvent.setup()
-
-    renderSettings()
-
-    const uploadButton = await screen.findByRole('button', { name: /upload.*first time|subir.*primera vez/i })
-    await user.click(uploadButton)
-
-    await user.click(screen.getByRole('button', { name: /cancel|cancelar/i }))
-
-    expect(syncNowMock).not.toHaveBeenCalled()
-  })
-
-  it('lists local backups and restores the selected one', async () => {
-    getSyncConfigMock.mockReturnValue(null)
-    getMetaMock.mockResolvedValue(PENDING_META)
+  it('lista los backups locales y restaura el seleccionado', async () => {
     listBackupsMock.mockResolvedValue(BACKUPS)
     restoreBackupMock.mockResolvedValue(new Uint8Array([1, 2, 3]))
     const user = userEvent.setup()
@@ -141,29 +107,11 @@ describe('SyncSettings', () => {
     await waitFor(() => expect(screen.getByText(/backup restored|copia restaurada/i)).toBeInTheDocument())
   })
 
-  it('shows an empty-state message when there are no backups', async () => {
-    getSyncConfigMock.mockReturnValue(null)
-    getMetaMock.mockResolvedValue(PENDING_META)
+  it('muestra empty-state cuando no hay backups', async () => {
     listBackupsMock.mockResolvedValue([])
 
     renderSettings()
 
     expect(await screen.findByText(/no backups|no hay copias/i)).toBeInTheDocument()
-  })
-
-  it('shows an error when the first push fails', async () => {
-    getSyncConfigMock.mockReturnValue(VALID_CONF)
-    getMetaMock.mockResolvedValue(PENDING_META)
-    listBackupsMock.mockResolvedValue([])
-    syncNowMock.mockResolvedValue({ action: 'error', error: 'network' })
-    const user = userEvent.setup()
-
-    renderSettings()
-
-    const uploadButton = await screen.findByRole('button', { name: /upload.*first time|subir.*primera vez/i })
-    await user.click(uploadButton)
-    await user.click(screen.getByRole('button', { name: /continue|continuar|subir|confirm/i }))
-
-    await waitFor(() => expect(screen.getByText(/sync failed|error de sincronización/i)).toBeInTheDocument())
   })
 })

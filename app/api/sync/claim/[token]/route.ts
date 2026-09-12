@@ -1,13 +1,5 @@
 import { BlobNotFoundError } from '@vercel/blob'
-import {
-  bytesToBase64,
-  deleteClaim,
-  getClaim,
-  getSnapshotBytes,
-  getSnapshotMeta,
-  markClaimConsumed,
-  requireClaimToken,
-} from '@/lib/blob-relay'
+import { deleteClaim, getClaim, markClaimConsumed, requireClaimToken } from '@/lib/blob-relay'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,11 +10,12 @@ function claimNotFound(): Response {
   return Response.json({ error: 'claim_not_found' }, { status: 404 })
 }
 
-// GET /api/sync/claim/[token] → 200 { bytes, hash, updatedAt, syncCode } | 404 | 500
+// GET /api/sync/claim/[token] → 200 { bytes, hash, createdAt } | 404 | 500
 //
 // Consumo del claim (token-capability, SIN headers). Todo token válido recibe
 // 404 salvo el 200 de éxito, para no permitir enumeración (D-sign). El claim es
-// de un solo uso: se marca "consumed" antes de devolver los bytes.
+// de un solo uso y autocontenido: se marca "consumed" antes de devolver los
+// bytes (que viajan inline en el sidecar, sin relay de snapshots — NFR-3).
 export async function GET(_req: Request, ctx: RouteContext): Promise<Response> {
   const token = (await ctx.params).token
   if (!requireClaimToken(token)) return claimNotFound()
@@ -40,19 +33,8 @@ export async function GET(_req: Request, ctx: RouteContext): Promise<Response> {
 
     await markClaimConsumed(token)
 
-    const bytes = await getSnapshotBytes(claim.syncCode)
-    if (!bytes) {
-      return Response.json({ error: 'snapshot_not_found' }, { status: 404 })
-    }
-
-    const meta = await getSnapshotMeta(claim.syncCode)
     return Response.json(
-      {
-        bytes: bytesToBase64(bytes),
-        hash: claim.hash,
-        updatedAt: meta?.updatedAt ?? null,
-        syncCode: claim.syncCode,
-      },
+      { bytes: claim.payload, hash: claim.hash, createdAt: claim.createdAt },
       { status: 200 }
     )
   } catch {

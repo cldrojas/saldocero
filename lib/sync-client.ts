@@ -1,56 +1,14 @@
 // lib/sync-client.ts
-// Client-side sync orchestration: pull → merge → push against the Batch 3
-// relay routes (/api/sync, /api/sync/meta). Works on the process-wide
-// sql.js singleton (getDb) and swaps it after a merge via setDb().
+// Client-side claim orchestration for QR sync (Opción B — claim autocontenido).
+// No hay syncCode/SYNC_TOKEN ni relay de snapshots: el snapshot viaja inline en
+// el sidecar del claim (payload base64) y el token del claim es la única
+// capability (NFR-3). Works on the process-wide sql.js singleton (getDb) and
+// swaps it after a merge via setDb().
 import type { Database } from 'sql.js'
 import { getDb, initDb, setDb, exportDb } from '@/lib/db/client'
 import { saveBackup, saveToIndexedDB } from '@/lib/db/persistence'
 import { setMeta, getActiveDeviceId } from '@/lib/db/meta'
 import { mergeDatabases } from '@/lib/db/merge'
-
-export interface SyncConfig {
-  syncCode: string
-  syncToken: string
-}
-
-export interface RemoteMeta {
-  hash: string
-  size: number
-  updatedAt: string
-}
-
-export type SyncResult =
-  | { action: 'synced'; hash: string; updatedAt: string }
-  | { action: 'pushed'; hash: string; updatedAt: string }
-  | { action: 'merged'; hash: string; updatedAt: string }
-  | { action: 'error'; error: string }
-
-export class SyncAuthError extends Error {
-  override name = 'SyncAuthError'
-}
-
-const CODE_KEY = 'saldo-cero-sync-code'
-const TOKEN_KEY = 'saldo-cero-sync-token'
-
-/**
- * Reads the persisted sync credentials, or null if not configured yet.
- */
-export function getSyncConfig(): SyncConfig | null {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null
-  const syncCode = localStorage.getItem(CODE_KEY)
-  const syncToken = localStorage.getItem(TOKEN_KEY)
-  if (!syncCode || !syncToken) return null
-  return { syncCode, syncToken }
-}
-
-/**
- * Persists the sync credentials on this device.
- */
-export function setSyncConfig(config: SyncConfig): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return
-  localStorage.setItem(CODE_KEY, config.syncCode)
-  localStorage.setItem(TOKEN_KEY, config.syncToken)
-}
 
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
@@ -110,14 +68,6 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join('')
 }
 
-function authHeaders(conf: SyncConfig): Record<string, string> {
-  return {
-    'x-sync-code': conf.syncCode,
-    'x-sync-token': conf.syncToken,
-    'Content-Type': 'application/json',
-  }
-}
-
 async function fetchJson(
   url: string,
   opts?: RequestInit
@@ -127,202 +77,55 @@ async function fetchJson(
   return { status: res.status, data }
 }
 
-/**
- * Reads the remote snapshot metadata.
- * 404 → null (no snapshot upstream yet); 401 → SyncAuthError.
- */
-export async function fetchRemoteMeta(conf: SyncConfig): Promise<RemoteMeta | null> {
-  const { status, data } = await fetchJson('/api/sync/meta', {
-    method: 'GET',
-    headers: authHeaders(conf),
-  })
-  if (status === 401) throw new SyncAuthError('unauthorized')
-  if (status === 404) return null
-  if (status !== 200) throw new Error(`http-${status}`)
-  return data as RemoteMeta
-}
-
-async function markSynced(conf: SyncConfig, hash: string, updatedAt: string): Promise<void> {
-  await setMeta({
-    snapshot_hash: hash,
-    updated_at: updatedAt,
-    device_id: getActiveDeviceId(),
-  })
-}
-
-/**
- * pull → merge → push. Persists a pre-merge backup, swaps the singleton with
- * the converged database, and stamps sync_meta. On a 409 conflict it
- * re-reads the remote metadata and retries once (idempotent re-merge).
- */
-async function pullMergePush(conf: SyncConfig, baseRemote: RemoteMeta): Promise<SyncResult> {
-  const pull = await fetchJson('/api/sync', { headers: authHeaders(conf) }).catch(() => null)
-  if (!pull) return { action: 'error', error: 'network' }
-  if (pull.status !== 200) return { action: 'error', error: `http-${pull.status}` }
-
-  const remote = pull.data as { bytes: string; hash: string; updatedAt: string }
-  const remoteDb = await initDb(base64ToBytes(remote.bytes))
-
-  const localDb = await getDb()
-  const localBytes = exportDb(localDb)
-  try {
-    await saveBackup(localBytes, `pre-merge-${Date.now()}`)
-  } catch {
-    // El backup es best-effort: un fallo de IndexedDB no debe bloquear el sync
-  }
-
-  const merged = mergeDatabases(localDb, remoteDb, getActiveDeviceId())
-  setDb(merged)
-  const mergedBytes = exportDb(merged)
-
-  const post = await fetchJson('/api/sync', {
-    method: 'POST',
-    headers: authHeaders(conf),
-    body: JSON.stringify({ bytes: bytesToBase64(mergedBytes), basedOnHash: baseRemote.hash }),
-  }).catch(() => null)
-  if (!post) return { action: 'error', error: 'network' }
-
-  if (post.status === 200) {
-    const data = post.data as { hash: string; updatedAt: string }
-    await saveToIndexedDbSafe(merged)
-    await markSynced(conf, data.hash, data.updatedAt)
-    return { action: 'merged', hash: data.hash, updatedAt: data.updatedAt }
-  }
-
-  if (post.status === 409) {
-    try {
-      const fresh = await fetchRemoteMeta(conf)
-      if (fresh) return pullMergePush(conf, fresh)
-    } catch {
-      // sin metadata fresca → reportamos conflicto
-    }
-    return { action: 'error', error: 'conflict' }
-  }
-
-  return { action: 'error', error: `http-${post.status}` }
-}
-
-async function saveToIndexedDbSafe(db: Database): Promise<void> {
-  try {
-    await saveToIndexedDB(db)
-  } catch {
-    // Persistir el snapshot es best-effort
-  }
-}
-
-/**
- * Runs the full sync cycle against the relay:
- *  1. meta → 404: primer push (POST sin basedOnHash)
- *  2. meta hash == local hash: 'synced' sin tocar el relay
- *  3. hash distinto: pull → merge → push (con retry 409)
- *
- * Nunca lanza por errores HTTP/red: devuelve { action: 'error' }.
- */
-export async function syncNow(conf: SyncConfig): Promise<SyncResult> {
-  try {
-    const db = await getDb()
-    const localBytes = exportDb(db)
-    const localHash = await sha256Hex(localBytes)
-
-    let remote: RemoteMeta | null
-    try {
-      remote = await fetchRemoteMeta(conf)
-    } catch (err) {
-      return { action: 'error', error: err instanceof SyncAuthError ? 'auth' : 'network' }
-    }
-
-    if (!remote) {
-      const post = await fetchJson('/api/sync', {
-        method: 'POST',
-        headers: authHeaders(conf),
-        body: JSON.stringify({ bytes: bytesToBase64(localBytes) }),
-      }).catch(() => null)
-      if (!post) return { action: 'error', error: 'network' }
-
-      if (post.status === 200) {
-        const data = post.data as { hash: string; updatedAt: string }
-        await saveToIndexedDbSafe(db)
-        await markSynced(conf, data.hash, data.updatedAt)
-        return { action: 'pushed', hash: data.hash, updatedAt: data.updatedAt }
-      }
-
-      if (post.status === 409) {
-        // Otro dispositivo pusheó entre nuestra lectura de meta y el POST
-        try {
-          const fresh = await fetchRemoteMeta(conf)
-          if (fresh) return pullMergePush(conf, fresh)
-        } catch {
-          // seguimos con el conflicto
-        }
-        return { action: 'error', error: 'conflict' }
-      }
-
-      return { action: 'error', error: `http-${post.status}` }
-    }
-
-    if (remote.hash === localHash) {
-      return { action: 'synced', hash: localHash, updatedAt: remote.updatedAt }
-    }
-
-    return pullMergePush(conf, remote)
-  } catch (err) {
-    return { action: 'error', error: err instanceof SyncAuthError ? 'auth' : 'network' }
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Claim-based QR export/import (qr-sync-export). A claim is a short-lived
-// capability issued by the relay snapshot (POST /api/sync/claim). Device A
-// exports its snapshot as a claim and renders it as a QR; device B redeems the
-// claim by token (GET /api/sync/claim/:token) with no auth headers — the token
-// itself is the capability.
+// Claim-based QR export/import (Opción B — claim autocontenido). Device A
+// exports its snapshot bytes as a claim (POST /api/sync/claim, anónimo) and
+// renders them as a QR; device B redeems the claim by token
+// (GET /api/sync/claim/[token]) with no auth headers — the token itself is
+// the capability and el payload viaja inline en el sidecar.
 // ---------------------------------------------------------------------------
 
 export type ClaimIssueResult =
-  | { ok: true; token: string; syncCode: string; hash: string; expiresAt: number }
-  | { ok: false; error: string }
+  | { ok: true; token: string; hash: string; expiresAt: number }
+  | { ok: false; error: 'too_large' | 'bad-request' | 'network' | 'server' }
 
-export type ClaimFetchError =
-  | 'claim_expired'
-  | 'claim_consumed'
-  | 'claim_not_found'
-  | 'snapshot_not_found'
-  | 'network'
-  | `http-${number}`
+export type ClaimFetchError = 'expired' | 'consumed' | 'not_found' | 'network'
 
 export type ClaimFetchResult =
-  | { ok: true; syncCode: string; hash: string; updatedAt: string; bytes: Uint8Array }
+  | { ok: true; bytes: Uint8Array; hash: string; createdAt: number }
   | { ok: false; error: ClaimFetchError }
 
-/**
- * Builds the deep link embedded in the export QR: a GET against the sync-import
- * page with both the sync code and the claim token as query params.
- */
-export function buildClaimUrl(origin: string, syncCode: string, token: string): string {
-  return `${origin}/sync-import?c=${encodeURIComponent(syncCode)}&claim=${encodeURIComponent(token)}`
+export interface QrImportData {
+  bytes: Uint8Array
+  hash: string
+  createdAt: number
 }
 
 /**
- * Issues a claim against the latest relay snapshot. The snapshot must already
- * exist (syncNow pushed at least once). 401 → SyncAuthError (like syncNow).
+ * Builds the deep link embedded in the export QR: a GET against the sync-import
+ * page with only the claim token as query param (sin param `c` — D4).
  */
-export async function createClaim(conf: SyncConfig): Promise<ClaimIssueResult> {
+export function buildClaimUrl(origin: string, token: string): string {
+  return `${origin}/sync-import?claim=${encodeURIComponent(token)}`
+}
+
+/**
+ * Issues an anonymous self-contained claim with the given snapshot bytes.
+ * El snapshot viaja inline (payload base64); el servidor devuelve el token,
+ * el hash y la expiración. Nunca lanza: devuelve un resultado etiquetado.
+ */
+export async function createClaim(bytes: Uint8Array): Promise<ClaimIssueResult> {
   const res = await fetchJson('/api/sync/claim', {
     method: 'POST',
-    headers: authHeaders(conf),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bytes: bytesToBase64(bytes) }),
   }).catch(() => null)
   if (!res) return { ok: false, error: 'network' }
-  if (res.status === 401) throw new SyncAuthError('unauthorized')
-  if (res.status === 404) return { ok: false, error: 'snapshot_not_found' }
-  if (res.status !== 200) return { ok: false, error: `http-${res.status}` }
-  const data = res.data as { token: string; syncCode: string; hash: string; expiresAt: number }
-  return {
-    ok: true,
-    token: data.token,
-    syncCode: data.syncCode,
-    hash: data.hash,
-    expiresAt: data.expiresAt,
-  }
+  if (res.status === 413) return { ok: false, error: 'too_large' }
+  if (res.status === 400) return { ok: false, error: 'bad-request' }
+  if (res.status !== 200) return { ok: false, error: 'server' }
+  const data = res.data as { token: string; hash: string; expiresAt: number }
+  return { ok: true, token: data.token, hash: data.hash, expiresAt: data.expiresAt }
 }
 
 /**
@@ -334,40 +137,42 @@ export async function fetchClaim(token: string): Promise<ClaimFetchResult> {
   const res = await fetchJson(`/api/sync/claim/${encodeURIComponent(token)}`).catch(() => null)
   if (!res) return { ok: false, error: 'network' }
   if (res.status === 200) {
-    const data = res.data as { bytes: string; hash: string; updatedAt: string; syncCode: string }
+    const data = res.data as { bytes: string; hash: string; createdAt: number }
     return {
       ok: true,
-      syncCode: data.syncCode,
-      hash: data.hash,
-      updatedAt: data.updatedAt,
       bytes: base64ToBytes(data.bytes),
+      hash: data.hash,
+      createdAt: data.createdAt,
     }
   }
   if (res.status === 404) {
     const rawError = (res.data as { error?: string } | null)?.error
-    if (
-      rawError === 'claim_expired' ||
-      rawError === 'claim_consumed' ||
-      rawError === 'claim_not_found' ||
-      rawError === 'snapshot_not_found'
-    ) {
-      return { ok: false, error: rawError }
-    }
-    return { ok: false, error: 'claim_not_found' }
+    if (rawError === 'claim_expired') return { ok: false, error: 'expired' }
+    if (rawError === 'claim_consumed') return { ok: false, error: 'consumed' }
+    return { ok: false, error: 'not_found' }
   }
-  return { ok: false, error: `http-${res.status}` }
+  return { ok: false, error: 'network' }
+}
+
+async function saveToIndexedDbSafe(db: Database): Promise<void> {
+  try {
+    await saveToIndexedDB(db)
+  } catch {
+    // Persistir el snapshot es best-effort
+  }
 }
 
 /**
  * Applies a redeemed claim to this device: best-effort pre-import backup,
  * local ↔ remote merge (pure), singleton swap, IndexedDB persistence, and
- * sync_meta stamp. Also auto-fills the persisted sync code when this device
- * has none, or (replaceCode) when the user opted to replace a different one.
+ * sync_meta stamp (hash + createdAt). No toda la ruta implementa auto-fill de
+ * sync código (ya no existe): el claim es autocontenido.
  */
-export async function applyClaimImport(
-  data: Extract<ClaimFetchResult, { ok: true }>,
-  opts: { replaceCode: boolean }
-): Promise<SyncResult> {
+export async function applyQrImport(
+  data: QrImportData,
+  opts: { deviceId?: string }
+): Promise<void> {
+  const deviceId = opts.deviceId ?? getActiveDeviceId()
   const remoteDb = await initDb(data.bytes)
 
   const localDb = await getDb()
@@ -378,47 +183,31 @@ export async function applyClaimImport(
     // El backup es best-effort: un fallo de IndexedDB no debe bloquear el import
   }
 
-  const merged = mergeDatabases(localDb, remoteDb, getActiveDeviceId())
+  const merged = mergeDatabases(localDb, remoteDb, deviceId)
   setDb(merged)
   await saveToIndexedDbSafe(merged)
 
-  // setMeta directly (not the private markSynced helper, which requires a
-  // SyncConfig we may not have when SYNC_TOKEN is absent on this device).
   await setMeta({
     snapshot_hash: data.hash,
-    updated_at: data.updatedAt,
-    device_id: getActiveDeviceId(),
+    updated_at: new Date(data.createdAt).toISOString(),
+    device_id: deviceId,
   })
-
-  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
-    const current = localStorage.getItem(CODE_KEY)
-    if (!current) {
-      localStorage.setItem(CODE_KEY, data.syncCode)
-    } else if (current !== data.syncCode && opts.replaceCode) {
-      localStorage.setItem(CODE_KEY, data.syncCode)
-    }
-  }
-
-  return { action: 'merged', hash: data.hash, updatedAt: data.updatedAt }
 }
 
 /**
  * Convenience wrapper: fetches the claim, then applies it. Errors are folded
- * into a tagged { action: 'error', error } result, never thrown.
+ * into a tagged { ok: false } result, never thrown.
  */
 export async function importFromClaim(
   token: string,
-  opts: { replaceCode: boolean }
-): Promise<SyncResult | { action: 'error'; error: ClaimFetchError }> {
+  opts: { deviceId?: string }
+): Promise<ClaimFetchResult> {
   const data = await fetchClaim(token)
-  if (!data.ok) return { action: 'error', error: data.error }
-  return applyClaimImport(data, opts)
-}
-
-/**
- * Reads the persisted sync code, or null if not configured yet.
- */
-export function getSyncCode(): string | null {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null
-  return localStorage.getItem(CODE_KEY)
+  if (!data.ok) return data
+  try {
+    await applyQrImport(data, opts)
+  } catch {
+    return { ok: false, error: 'network' }
+  }
+  return data
 }

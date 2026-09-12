@@ -1,14 +1,33 @@
+// tests/unit/sync-client.test.ts
+// Tests del cliente de claims por QR (Opción B): helpers base64/SHA-256,
+// buildClaimUrl, createClaim/fetchClaim (mapeo de errores) e importFromClaim
+// (integración real con merge + IndexedDB sobre el singleton de sql.js).
+// No hay syncConfig/fetchRemoteMeta/syncNow/SyncAuthError: esos símbolos se
+// eliminaron con el flujo legacy de syncCode/SYNC_TOKEN.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import 'fake-indexeddb/auto'
-import { resetDb, initDb, getDb, exportDb, getSql } from '@/lib/db/client'
-import { sha256Hex, bytesToBase64, base64ToBytes } from '@/lib/sync-client'
-import { getSyncConfig, setSyncConfig, fetchRemoteMeta, syncNow, SyncAuthError } from '@/lib/sync-client'
-import type { SyncConfig, RemoteMeta, SyncResult } from '@/lib/sync-client'
+import { resetDb, getDb, exportDb, getSql } from '@/lib/db/client'
+import { getMeta } from '@/lib/db/meta'
+import { SCHEMA } from '@/lib/db/schema'
+import {
+  sha256Hex,
+  bytesToBase64,
+  base64ToBytes,
+  buildClaimUrl,
+  createClaim,
+  fetchClaim,
+  importFromClaim,
+} from '@/lib/sync-client'
 
-// localStorage mock para tests de config (localStorage ya existe en jsdom,
-// pero lo limpiamos manualmente para evitar residuos entre tests)
+// localStorage para el deviceId estable (applyQrImport lo usa por defecto,
+// pero en los tests pasamos deviceId explícito; limpiamos igual por higiene)
 beforeEach(() => {
   localStorage.clear()
+  return resetDb()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 function createStorageMock(): Storage {
@@ -22,21 +41,6 @@ function createStorageMock(): Storage {
     setItem: (k: string, v: string) => { map.set(k, v) },
   } as unknown as Storage
 }
-
-const TEST_DB_SCHEMA = `
-CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, icon TEXT NOT NULL DEFAULT 'wallet', hidden INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), deleted_at TEXT DEFAULT NULL, device_id TEXT DEFAULT NULL);
-CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, type TEXT NOT NULL, amount INTEGER NOT NULL, description TEXT NOT NULL, account_id TEXT NOT NULL, date TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), deleted_at TEXT DEFAULT NULL, device_id TEXT DEFAULT NULL);
-CREATE TABLE IF NOT EXISTS budgets (id TEXT PRIMARY KEY, name TEXT NOT NULL, amount INTEGER NOT NULL, period TEXT NOT NULL DEFAULT 'monthly', category TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), deleted_at TEXT DEFAULT NULL, device_id TEXT DEFAULT NULL);
-CREATE TABLE IF NOT EXISTS recurring_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, amount INTEGER NOT NULL, description TEXT NOT NULL, account_id TEXT NOT NULL, frequency TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT DEFAULT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), deleted_at TEXT DEFAULT NULL, device_id TEXT DEFAULT NULL);
-CREATE TABLE IF NOT EXISTS sync_meta (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at TEXT NOT NULL DEFAULT (datetime('now')), device_id TEXT NOT NULL DEFAULT 'local', snapshot_hash TEXT DEFAULT NULL);
-`
-
-/** Push a known database state into the singleton so exportDb works reliably */
-async function seedDb(): Promise<void> {
-  await initDb(new TextEncoder().encode(TEST_DB_SCHEMA))
-}
-
-const VALID_CONF: SyncConfig = { syncCode: 'test-code', syncToken: 'test-token' }
 
 function mockFetch(status: number, body: unknown) {
   return vi.fn().mockResolvedValue({
@@ -67,158 +71,124 @@ describe('helpers', () => {
     expect(await sha256Hex(input)).toBe(hash)
   })
 
-  it('sha256Hex is deterministic', async () => {
-    const a = await sha256Hex(new Uint8Array([10, 20, 30]))
-    const b = await sha256Hex(new Uint8Array([10, 20, 30]))
-    expect(a).toBe(b)
+  it('buildClaimUrl embeds only the claim token (D4: sin param `c`)', () => {
+    expect(buildClaimUrl('https://app.example', 'abc-123')).toBe(
+      'https://app.example/sync-import?claim=abc-123'
+    )
+    expect(buildClaimUrl('http://x', 'a b')).toBe('http://x/sync-import?claim=a%20b')
   })
 })
 
-// ─── Sync config ────────────────────────────────────────────────────────────
-describe('sync config', () => {
-  it('getSyncConfig returns null when empty', () => {
-    expect(getSyncConfig()).toBeNull()
+// ─── createClaim ────────────────────────────────────────────────────────────
+describe('createClaim', () => {
+  it('200 → { ok: true, token, hash, expiresAt }', async () => {
+    const payload = new Uint8Array([1, 2, 3])
+    const hash = await sha256Hex(payload)
+    vi.stubGlobal('fetch', mockFetch(200, { token: 'tok-1', hash, expiresAt: 123456 }))
+    const result = await createClaim(payload)
+    expect(result).toEqual({ ok: true, token: 'tok-1', hash, expiresAt: 123456 })
   })
 
-  it('setSyncConfig + getSyncConfig roundtrip', () => {
-    setSyncConfig({ syncCode: 'code123', syncToken: 'tok456' })
-    expect(getSyncConfig()).toEqual({ syncCode: 'code123', syncToken: 'tok456' })
-  })
-})
-
-// ─── fetchRemoteMeta ────────────────────────────────────────────────────────
-describe('fetchRemoteMeta', () => {
-  afterEach(() => { vi.unstubAllGlobals() })
-
-  it('200 → RemoteMeta', async () => {
-    const remote: RemoteMeta = { hash: 'abc123', size: 1024, updatedAt: '2025-09-09T12:00:00Z' }
-    vi.stubGlobal('fetch', mockFetch(200, remote))
-    const result = await fetchRemoteMeta(VALID_CONF)
-    expect(result).toEqual(remote)
+  it('413 → too_large', async () => {
+    vi.stubGlobal('fetch', mockFetch(413, { error: 'claim_too_large' }))
+    expect(await createClaim(new Uint8Array([1]))).toEqual({ ok: false, error: 'too_large' })
   })
 
-  it('404 → null (no snapshot upstream)', async () => {
-    vi.stubGlobal('fetch', mockFetch(404, null))
-    const result = await fetchRemoteMeta(VALID_CONF)
-    expect(result).toBeNull()
+  it('400 → bad-request', async () => {
+    vi.stubGlobal('fetch', mockFetch(400, { error: 'bad-request' }))
+    expect(await createClaim(new Uint8Array([1]))).toEqual({ ok: false, error: 'bad-request' })
   })
 
-  it('401 → throws SyncAuthError', async () => {
-    vi.stubGlobal('fetch', mockFetch(401, { error: 'unauthorized' }))
-    await expect(fetchRemoteMeta(VALID_CONF)).rejects.toBeInstanceOf(SyncAuthError)
+  it('500 → server', async () => {
+    vi.stubGlobal('fetch', mockFetch(500, { error: 'claim_issue_failed' }))
+    expect(await createClaim(new Uint8Array([1]))).toEqual({ ok: false, error: 'server' })
+  })
+
+  it('network error → network (nunca lanza)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+    expect(await createClaim(new Uint8Array([1]))).toEqual({ ok: false, error: 'network' })
   })
 })
 
-// ─── syncNow ────────────────────────────────────────────────────────────────
-describe('syncNow', () => {
-  afterEach(() => { vi.unstubAllGlobals() })
-
-  it('first push (404 → POST 200 → pushed)', async () => {
-    await seedDb()
-    const localBytes = exportDb(await getDb())
-    const localHash = await sha256Hex(localBytes)
-    const remoteHash = 'remote-hash-1'
-    const remoteAt = '2025-09-09T12:00:00Z'
-
-    let fetchCall = 0
-    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init?: RequestInit) => {
-      fetchCall++
-      // First call: GET /api/sync/meta → 404
-      if (fetchCall === 1) {
-        return { ok: false, status: 404, json: async () => null }
-      }
-      // Second call: POST /api/sync → 200
-      return {
-        ok: true, status: 200,
-        json: async () => ({ hash: remoteHash, updatedAt: remoteAt }),
-      }
-    }))
-
-    const result = await syncNow(VALID_CONF)
-    expect(result).toEqual({ action: 'pushed', hash: remoteHash, updatedAt: remoteAt })
+// ─── fetchClaim ─────────────────────────────────────────────────────────────
+describe('fetchClaim', () => {
+  it('200 → { ok: true, bytes, hash, createdAt }', async () => {
+    const payload = new Uint8Array([72, 105])
+    const hash = await sha256Hex(payload)
+    vi.stubGlobal('fetch', mockFetch(200, { bytes: bytesToBase64(payload), hash, createdAt: 999 }))
+    const result = await fetchClaim('tok-1')
+    expect(result).toEqual({ ok: true, bytes: payload, hash, createdAt: 999 })
   })
 
-  it('synced when hash identical (GET meta 200, same hash)', async () => {
-    await seedDb()
-    const localBytes = exportDb(await getDb())
-    const localHash = await sha256Hex(localBytes)
-
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200,
-      json: async () => ({ hash: localHash, size: localBytes.length, updatedAt: '2025-01-01T00:00:00Z' }),
-    })))
-
-    const result = await syncNow(VALID_CONF)
-    expect(result).toEqual({ action: 'synced', hash: localHash, updatedAt: '2025-01-01T00:00:00Z' })
+  it('404 claim_expired → expired', async () => {
+    vi.stubGlobal('fetch', mockFetch(404, { error: 'claim_expired' }))
+    expect(await fetchClaim('t')).toEqual({ ok: false, error: 'expired' })
   })
 
-  it('pull + merge + push (hash diverges)', async () => {
-    // Seed empty local
-    await seedDb()
-    const localBytes = exportDb(await getDb())
-    const localHash = await sha256Hex(localBytes)
+  it('404 claim_consumed → consumed', async () => {
+    vi.stubGlobal('fetch', mockFetch(404, { error: 'claim_consumed' }))
+    expect(await fetchClaim('t')).toEqual({ ok: false, error: 'consumed' })
+  })
 
-    // Create a different remote db and get its bytes
-    const remoteDbSchema = TEST_DB_SCHEMA + `INSERT INTO accounts (id,name,type) VALUES ('a1','Acme','daily');`
+  it('404 sin error específico → not_found', async () => {
+    vi.stubGlobal('fetch', mockFetch(404, { error: 'claim_not_found' }))
+    expect(await fetchClaim('t')).toEqual({ ok: false, error: 'not_found' })
+  })
+
+  it('network error → network', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+    expect(await fetchClaim('t')).toEqual({ ok: false, error: 'network' })
+  })
+})
+
+// ─── importFromClaim ────────────────────────────────────────────────────────
+describe('importFromClaim', () => {
+  it('importa, mergea y estampa sync_meta (integración real con singleton)', async () => {
+    // Local: schema real, sin filas.
+    const localBytes = exportDb(await getDb())
+
+    // Remoto: schema real + cuenta 'a1'.
     const sql = await getSql()
     const remoteSql = new sql.Database()
-    remoteSql.run(remoteDbSchema)
+    remoteSql.run(SCHEMA)
+    remoteSql.run(
+      "INSERT INTO accounts (id, name, type, created_at, updated_at, device_id) " +
+      "VALUES ('a1', 'Acme', 'daily', datetime('now'), datetime('now'), 'dev-b')"
+    )
     const remoteBytes = new Uint8Array(remoteSql.export())
     const remoteHash = await sha256Hex(remoteBytes)
-    const remoteAt = '2025-09-10T10:00:00Z'
+    const createdAt = Date.now()
 
     vi.stubGlobal('fetch', mockFetch(200, {
       bytes: bytesToBase64(remoteBytes),
       hash: remoteHash,
-      updatedAt: remoteAt,
+      createdAt,
     }))
 
-    const result = await syncNow(VALID_CONF)
-    expect(['pushed', 'merged']).toContain(result.action)
-    expect((result as { hash: string }).hash).toBeTruthy()
+    const result = await importFromClaim('tok-1', { deviceId: 'dev-a' })
+    expect(result).toEqual({ ok: true, bytes: remoteBytes, hash: remoteHash, createdAt })
+
+    // El singleton fue conmutado al DB mergeado: la cuenta remota llegó, con
+    // device_id stampado por el dispositivo que importó.
+    const db = await getDb()
+    const rows = db.exec("SELECT id, name, device_id FROM accounts WHERE id = 'a1'")
+    expect(rows[0]?.values).toContainEqual(['a1', 'Acme', 'dev-a'])
+
+    // sync_meta quedó estampado con el hash del claim importado.
+    const meta = await getMeta()
+    expect(meta.snapshot_hash).toBe(remoteHash)
+    expect(meta.device_id).toBe('dev-a')
+
+    // El local (schema sin filas) sigue intacto como data de base del merge.
+    expect(localBytes.length).toBeGreaterThan(0)
   })
 
-  it('409 conflict → retry → 200', async () => {
-    await seedDb()
-    const localBytes = exportDb(await getDb())
-
-    const sql = await getSql()
-    const remoteSql = new sql.Database()
-    remoteSql.run(TEST_DB_SCHEMA + `INSERT INTO accounts (id,name,type) VALUES ('a1','Acme','daily');`)
-    const remoteBytes = new Uint8Array(remoteSql.export())
-    const remoteHash = await sha256Hex(remoteBytes)
-    const remoteAt = '2025-09-10T10:00:00Z'
-
-    let postCount = 0
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url === '/api/sync/meta') {
-        return { ok: true, status: 200, json: async () => ({ hash: remoteHash, size: remoteBytes.length, updatedAt: remoteAt }) }
-      }
-      // GET /api/sync
-      if (url === '/api/sync') {
-        return { ok: true, status: 200, json: async () => ({ bytes: bytesToBase64(remoteBytes), hash: remoteHash, updatedAt: remoteAt }) }
-      }
-      // POST /api/sync → 409 first time, 200 second time
-      postCount++
-      if (postCount === 1) {
-        return { ok: false, status: 409, json: async () => ({ error: 'conflict', remoteHash, remoteUpdatedAt: remoteAt }) }
-      }
-      return { ok: true, status: 200, json: async () => ({ hash: remoteHash, updatedAt: remoteAt }) }
-    }))
-
-    const result = await syncNow(VALID_CONF)
-    expect(result.action).toBe('merged')
-  })
-
-  it('401 → error auth', async () => {
-    vi.stubGlobal('fetch', mockFetch(401, { error: 'unauthorized' }))
-    const result = await syncNow(VALID_CONF)
-    expect(result).toEqual({ action: 'error', error: 'auth' })
-  })
-
-  it('network error → error network', async () => {
+  it('network error en el fetch → { ok: false, error: network } sin tocar la DB', async () => {
+    const before = exportDb(await getDb())
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
-    const result = await syncNow(VALID_CONF)
-    expect(result).toEqual({ action: 'error', error: 'network' })
+    const result = await importFromClaim('tok-1', { deviceId: 'dev-a' })
+    expect(result).toEqual({ ok: false, error: 'network' })
+    const after = exportDb(await getDb())
+    expect(Buffer.from(after)).toEqual(Buffer.from(before))
   })
 })

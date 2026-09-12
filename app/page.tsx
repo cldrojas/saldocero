@@ -3,7 +3,6 @@
 import { Button } from '@/components/ui/button'
 import { useBudget } from '@/hooks/use-budget'
 import { HeaderMenu } from '@/components/header-menu'
-import { SyncButton } from '@/components/sync/sync-button'
 import { SyncSettings } from '@/components/sync/sync-settings'
 import { useLanguage } from '@/contexts/language-context'
 import { SetupForm } from '@/components/setup-form'
@@ -46,7 +45,6 @@ export default function DailyBudgetApp() {
           <div className="container flex items-center justify-between h-16 px-4">
             <h1 className="text-xl font-bold">{t('appName')}</h1>
             <div className="flex items-center gap-2">
-              <SyncButton />
               <HeaderMenu
                 budget={budget}
                 onUpdateConfig={updateConfig}
@@ -119,8 +117,8 @@ export default function DailyBudgetApp() {
           )}
 
           {/* La sincronización no depende del setup (FR-4): un dispositivo fresh
-              (sin presupuesto todavía) puede configurar un sync code/token para
-              descargar los datos de otro dispositivo o hacer su primer push. */}
+              (sin presupuesto todavía) puede importar datos vía QR desde otro
+              dispositivo o restaurar una copia de seguridad local. */}
           {!isSetup && (
             <ErrorBoundary>
               <SyncSettings />

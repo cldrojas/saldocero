@@ -1,9 +1,10 @@
 'use client'
 
-// QR export / import modal (Phase 4, qr-sync-export). Device A issues a
-// time-limited claim against the relay and renders it as a QR token; device B
-// scans the QR (or types the token) and imports the snapshot after confirming
-// a preview. Camera scanning is progressive enhancement over the manual path.
+// QR export / import modal (Opción B — claim autocontenido). Device A issues an
+// anonymous claim with its snapshot bytes and renders it as a QR token; device B
+// scans the QR (or types the token) and imports the snapshot after confirming a
+// preview. No syncCode/SYNC_TOKEN: el token del claim es la única capability.
+// Camera scanning is progressive enhancement over the manual path.
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
@@ -17,29 +18,20 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import ConfirmDialog from '@/components/modals/confirm-dialog'
 import { useLanguage } from '@/contexts/language-context'
 import { useToast } from '@/hooks/use-toast'
-import {
-  applyClaimImport,
-  buildClaimUrl,
-  createClaim,
-  fetchClaim,
-  getSyncCode,
-  getSyncConfig,
-  SyncAuthError,
-} from '@/lib/sync-client'
-import type { ClaimIssueResult, ClaimFetchResult } from '@/lib/sync-client'
+import { getDb, exportDb } from '@/lib/db/client'
+import { applyQrImport, buildClaimUrl, createClaim, fetchClaim } from '@/lib/sync-client'
+import type { ClaimIssueResult, QrImportData } from '@/lib/sync-client'
 
 export interface SyncQrModalProps {
   open: boolean
   mode: 'export' | 'import'
   onOpenChange: (open: boolean) => void
-  syncCode?: string // used in export mode (device A's code)
   initialToken?: string // optional claim token to prefill (sync-import deep link)
 }
 
-type ClaimData = Extract<ClaimFetchResult, { ok: true }>
+type ClaimData = QrImportData
 type IssuedClaim = Extract<ClaimIssueResult, { ok: true }>
 
 function canUseCamera(): boolean {
@@ -92,7 +84,6 @@ export function SyncQrModal({
   open,
   mode,
   onOpenChange,
-  syncCode,
   initialToken,
 }: SyncQrModalProps) {
   const { t } = useLanguage()
@@ -101,7 +92,6 @@ export function SyncQrModal({
   // ---- export state ----
   const [claim, setClaim] = useState<IssuedClaim | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
-  const [authError, setAuthError] = useState(false)
   const [expired, setExpired] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -111,35 +101,31 @@ export function SyncQrModal({
   const [preview, setPreview] = useState<ClaimData | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [replaceOpen, setReplaceOpen] = useState(false)
   const cameraId = useRef(`sync-qr-camera-${Math.random().toString(36).slice(2)}`).current
   const cameraRef = useRef<HTMLDivElement | null>(null)
   // Live html5-qrcode instance so the close/unmount cleanup can stop it.
   const scannerRef = useRef<{ stop: () => Promise<void>; clear: () => void } | null>(null)
-  const pendingDataRef = useRef<ClaimData | null>(null)
 
   const hasCamera = canUseCamera()
 
-  // El estado se resetea por remount: SyncQrModal se monta con
+  // El estado se reseta por remount: SyncQrModal se monta con
   // key={qrMode ?? 'closed'} desde sync-settings al abrirse. No hay
   // setState síncrono en effects (react-hooks/set-state-in-effect).
 
-  // Export: issue a claim against the latest relay snapshot on open.
+  // Export: issue an anonymous claim with the local snapshot bytes on open.
   useEffect(() => {
-    if (!open || mode !== 'export' || claim || exportError || authError) return
-    const conf = getSyncConfig()
-    if (!conf || !syncCode) return
+    if (!open || mode !== 'export' || claim || exportError) return
     let active = true
     void (async () => {
-      let res: ClaimIssueResult
+      let bytes: Uint8Array
       try {
-        res = await createClaim({ syncCode, syncToken: conf.syncToken })
-      } catch (err) {
-        if (!active) return
-        if (err instanceof SyncAuthError) setAuthError(true)
-        else setExportError('network')
+        const db = await getDb()
+        bytes = exportDb(db)
+      } catch {
+        if (active) setExportError('network')
         return
       }
+      const res = await createClaim(bytes)
       if (!active) return
       if (res.ok) setClaim(res)
       else setExportError(res.error)
@@ -147,13 +133,13 @@ export function SyncQrModal({
     return () => {
       active = false
     }
-  }, [open, mode, claim, exportError, authError, syncCode])
+  }, [open, mode, claim, exportError])
 
   // Export: render the QR once the claim is issued.
   useEffect(() => {
     if (!claim || !canvasRef.current) return
     const canvas = canvasRef.current
-    const url = buildClaimUrl(window.location.origin, claim.syncCode, claim.token)
+    const url = buildClaimUrl(window.location.origin, claim.token)
     void QRCode.toCanvas(canvas, url, { width: 220, margin: 1 }).catch(() => {
       // El QR es best-effort; el token tipoable sigue siendo ruta válida.
       setExportError('network')
@@ -201,8 +187,8 @@ export function SyncQrModal({
             } catch {
               // decodedText no era una URL absoluta
             }
-            if (claimToken) await runImport(claimToken)
-            else setImportError('claim_not_found')
+            if (claimToken) void runImport(claimToken)
+            else setImportError('not_found')
           })()
         }
 
@@ -265,28 +251,20 @@ export function SyncQrModal({
 
   function handleConfirm(): void {
     if (!preview) return
-    const current = getSyncCode()
-    if (current === null || current === preview.syncCode) {
-      void doApply(preview, false)
-      return
-    }
-    pendingDataRef.current = preview
-    setReplaceOpen(true)
+    void doApply(preview)
   }
 
-  async function doApply(data: ClaimData, replaceCode: boolean): Promise<void> {
+  async function doApply(data: ClaimData): Promise<void> {
     setBusy(true)
-    const res = await applyClaimImport(data, { replaceCode })
-    setBusy(false)
-    if (res.action === 'error') {
-      toast({
-        title: t('syncError'),
-        variant: 'destructive',
-      })
-      return
+    try {
+      await applyQrImport(data, {})
+      setBusy(false)
+      toast({ title: t('syncSynced') })
+      onOpenChange(false)
+    } catch {
+      setBusy(false)
+      toast({ title: t('syncError'), variant: 'destructive' })
     }
-    toast({ title: t('syncSynced') })
-    onOpenChange(false)
   }
 
   async function handleDone(): Promise<void> {
@@ -303,12 +281,14 @@ export function SyncQrModal({
 
   function errorLabel(error: string): string {
     switch (error) {
-      case 'claim_expired':
+      case 'expired':
         return t('sync.claim.error_expired')
-      case 'claim_consumed':
+      case 'consumed':
         return t('sync.claim.error_consumed')
-      case 'claim_not_found':
+      case 'not_found':
         return t('sync.claim.error_not_found')
+      case 'too_large':
+        return t('sync.claim.error_too_large')
       default:
         return t('syncError')
     }
@@ -323,19 +303,13 @@ export function SyncQrModal({
               <DialogTitle>{t('sync.export.title')}</DialogTitle>
             </DialogHeader>
 
-            {authError && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {t('sync.import.token_banner')}
-              </div>
-            )}
-
-            {!authError && exportError && (
+            {exportError && (
               <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                 {errorLabel(exportError)}
               </p>
             )}
 
-            {!authError && !exportError && claim && !expired && (
+            {!exportError && claim && !expired && (
               <div className="flex flex-col items-center gap-3">
                 <canvas
                   ref={canvasRef}
@@ -347,13 +321,13 @@ export function SyncQrModal({
               </div>
             )}
 
-            {!authError && !exportError && claim && expired && (
+            {!exportError && claim && expired && (
               <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                 {t('sync.claim.error_expired')}
               </p>
             )}
 
-            {!authError && !exportError && claim && (
+            {!exportError && claim && (
               <>
                 <div>
                   <label
@@ -387,18 +361,12 @@ export function SyncQrModal({
               </DialogDescription>
             </DialogHeader>
 
-            {mode === 'import' && !getSyncConfig()?.syncToken && (
-              <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-                {t('sync.import.token_banner')}
-              </div>
-            )}
-
             {preview ? (
               <div className="space-y-1 rounded-md border p-4">
                 <p className="font-medium">{t('sync.import.preview_title')}</p>
                 <p className="text-sm text-muted-foreground">
                   {t('sync.import.preview_date', {
-                    date: new Date(preview.updatedAt).toLocaleString(),
+                    date: new Date(preview.createdAt).toLocaleString(),
                   })}
                 </p>
                 <p className="text-xs font-mono text-muted-foreground">
@@ -463,28 +431,6 @@ export function SyncQrModal({
           </>
         )}
       </DialogContent>
-
-      <ConfirmDialog
-        open={replaceOpen}
-        onOpenChange={setReplaceOpen}
-        onConfirm={() => {
-          const data = pendingDataRef.current
-          pendingDataRef.current = null
-          setReplaceOpen(false)
-          if (data) void doApply(data, true)
-        }}
-        title={t('youSure')}
-        description={
-          replaceOpen
-            ? t('sync.claim.replace_confirm', {
-                current: getSyncCode() ?? '—',
-                new: preview?.syncCode ?? '—',
-              })
-            : undefined
-        }
-        confirmText={t('confirm')}
-        cancelText={t('cancel')}
-      />
     </Dialog>
   )
 }

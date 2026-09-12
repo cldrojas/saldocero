@@ -1,37 +1,31 @@
 import { createHash } from 'node:crypto'
-import { put, get, head, list, del, type GetBlobResult } from '@vercel/blob'
+import { put, get, list, del, type GetBlobResult } from '@vercel/blob'
 
-// ─── Relay de snapshots sobre Vercel Blob ────────────────────────────────
-// El blob del .db es un RELAY — no es la fuente de verdad (D3). Cada sync
-// code tiene su namespace: `saldo-cero-<syncCode>.db` + un sidecar JSON con
-// la metadata (hash SHA-256, tamaño, updatedAt) para el chequeo de
-// concurrencia sin descargar el snapshot completo (D7/D14).
+// ─── Relay de claims de exportación por QR sobre Vercel Blob ─────────────
+// Opción B: el claim es AUTOCONTENIDO — el snapshot completo (en base64) se
+// guarda inline en el sidecar JSON del claim (`saldo-cero-claims/<token>.json`),
+// junto con su hash SHA-256, el timestamp de creación y una ventana de
+// expiración (TTL 15 min). No hay syncCode ni SYNC_TOKEN: el token del claim
+// (capability) es la única autorización para consumirlo (D-sign, NFR-3).
 //
 // Nota @vercel/blob v2: `get` devuelve `GetBlobResult | null` (con `.stream`)
 // y tanto `get` como `put` exigen `access`. El access DEBE coincidir con el
 // tipo de store (public|private); si se usa 'public' en un store privado,
-// Vercel lanza "Cannot use public access on a private store". El relay
-// funciona con store privado: el cliente nunca recibe URLs de Blob — todo
-// pasa por las rutas /api/sync/* server-side, y los bytes se leen por stream
-// con el propio token del entorno. El relay expone bytes (Uint8Array) para
-// que las rutas no dependan de la forma del SDK.
-
-const SNAPSHOT_EXT = '.db'
-const META_EXT = '.db.json'
+// Vercel lanza "Cannot use public access on a private store". El relay usa
+// store privado: el cliente nunca recibe URLs de Blob — todo pasa por las
+// rutas /api/sync/claim* server-side. El relay expone bytes (Uint8Array) y
+// base64 para que las rutas no dependan de la forma del SDK.
 
 // Tipo de acceso del store. 'private' es lo compatible con tiendas privadas
 // (default en plans actuales); dejar constante para cambios en un solo punto.
 export const BLOB_ACCESS = 'private' as const
-type BlobAccess = typeof BLOB_ACCESS
-
-export const snapshotPath = (syncCode: string) => `saldo-cero-${syncCode}${SNAPSHOT_EXT}`
-export const metaPath = (syncCode: string) => `saldo-cero-${syncCode}${META_EXT}`
 
 // ─── Claims de exportación por QR ─────────────────────────────────────────
-// El claim es un cupón de un solo uso: sidecar JSON en su propio namespace
-// (`saldo-cero-claims/<token>.json`) con una ventana de expiración, para que
-// el import quizás-configure-luego (QR escaneado en otro dispositivo) no deje
-// snapshots huérfanos (D10/D11).
+// El claim es un cupón de un solo uso y autocontenido: sidecar JSON en su
+// propio namespace (`saldo-cero-claims/<token>.json`) con el payload del
+// snapshot inline, su hash para verificar la integridad y una ventana de
+// expiración. El import no deja snapshots huérfanos porque el payload viaja
+// con el claim (D10/D11).
 
 export const CLAIM_PREFIX = 'saldo-cero-claims/'
 
@@ -45,9 +39,9 @@ export function requireClaimToken(token: string): boolean {
 }
 
 export interface ClaimMeta {
-  syncCode: string
+  payload: string // snapshot completo en base64 (autocontenido)
   hash: string
-  createdAt: number
+  createdAt: number // epoch ms — se conserva como number en el contrato
   expiresAt: number
   status: 'open' | 'consumed'
 }
@@ -64,7 +58,7 @@ function isClaimMeta(value: unknown): value is ClaimMeta {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
   return (
-    typeof v.syncCode === 'string' &&
+    typeof v.payload === 'string' && // exige payload → rechaza sidecars legacy sin él
     typeof v.hash === 'string' &&
     typeof v.createdAt === 'number' &&
     typeof v.expiresAt === 'number' &&
@@ -72,7 +66,7 @@ function isClaimMeta(value: unknown): value is ClaimMeta {
   )
 }
 
-/** Metadata del claim, o null si no existe o está corrupto. */
+/** Metadata del claim, o null si no existe, está corrupto o es legacy. */
 export async function getClaim(token: string): Promise<ClaimMeta | null> {
   const bytes = await getOrNull(claimPath(token))
   if (!bytes) return null
@@ -125,26 +119,12 @@ export async function sweepClaims(now: number): Promise<number> {
   return purged
 }
 
-export interface SnapshotMeta {
-  hash: string
-  updatedAt: string
-  size: number
-}
-
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
 export const bytesToBase64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64')
 export const base64ToBytes = (base64: string) => new Uint8Array(Buffer.from(base64, 'base64'))
-
-async function headOrNull(pathname: string) {
-  try {
-    return await head(pathname, {})
-  } catch {
-    return null
-  }
-}
 
 /** El mock de tests devuelve un web Response; el SDK real un GetBlobResult. */
 async function resultToBytes(res: Response | GetBlobResult): Promise<Uint8Array> {
@@ -165,57 +145,4 @@ async function getOrNull(pathname: string): Promise<Uint8Array | null> {
   } catch {
     return null
   }
-}
-
-/** Metadata del snapshot remoto, o null si nunca se subió uno. */
-export async function getSnapshotMeta(syncCode: string): Promise<SnapshotMeta | null> {
-  const bytes = await getOrNull(metaPath(syncCode))
-  if (!bytes) return null
-  try {
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as SnapshotMeta
-    if (typeof parsed.hash !== 'string' || typeof parsed.size !== 'number') return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-/** Bytes del snapshot remoto, o null si no existe. */
-export async function getSnapshotBytes(syncCode: string): Promise<Uint8Array | null> {
-  return getOrNull(snapshotPath(syncCode))
-}
-
-/**
- * Sube snapshot + sidecar de metadata. Requiere re-check de concurrencia por
- * el caller (D7): esta función siempre sobreescribe; la protección 409 vive
- * en la ruta `/api/sync`.
- */
-export async function putSnapshot(
-  syncCode: string,
-  bytes: Uint8Array,
-  hash: string
-): Promise<SnapshotMeta> {
-  const dbPath = snapshotPath(syncCode)
-  // Buffer: aceptado por PutBody y `instanceof Uint8Array` (compat mock/tests)
-  await put(dbPath, Buffer.from(bytes), {
-    access: BLOB_ACCESS,
-    allowOverwrite: true,
-    addRandomSuffix: false,
-  })
-
-  // PutBlobResult v2 no expone uploadedAt/size → head para la metadata
-  const uploaded = await headOrNull(dbPath)
-  const { uploadedAt, size } = uploaded ?? {
-    uploadedAt: new Date().toISOString(),
-    size: bytes.length,
-  }
-  const updatedAt = typeof uploadedAt === 'string' ? uploadedAt : uploadedAt.toISOString()
-  const meta: SnapshotMeta = { hash, updatedAt, size }
-
-  await put(metaPath(syncCode), JSON.stringify(meta), {
-    access: BLOB_ACCESS,
-    allowOverwrite: true,
-    addRandomSuffix: false,
-  })
-  return meta
 }

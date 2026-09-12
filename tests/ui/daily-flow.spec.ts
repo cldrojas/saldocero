@@ -1,6 +1,7 @@
 // tests/ui/daily-flow.spec.ts
 // Spec de regresión (task 5.3) — reemplaza 5 specs legacy obsoletas por selectores
-// robustos post-Batch 4 (nuevo header con SyncButton + HeaderMenu móvil):
+// robustos post-Batch 4 (header con HeaderMenu móvil; el SyncButton ya no existe,
+// el QR vive en SyncSettings):
 //   home, config-form, transfer-form, theme-toggle, language-selector
 //
 // El estado se prepara SIEMPRE vía la UI real: la app escribe el presupuesto en
@@ -11,7 +12,7 @@
 // sync-dual-device.spec.ts) y el shadcn DatePicker (popover, sin input date).
 //
 // Selectores basados en roles/texto accesible, NO en data-testids que no existen
-// en la app (solo 'sync-button' y 'theme-toggle' tienen testid).
+// en la app (solo 'theme-toggle' tiene testid).
 import { test, expect, type Page } from '@playwright/test'
 import { waitForAppReady } from './test-utils'
 
