@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Menu, Sun, Moon, LogOut, User, Globe, CreditCard, Settings, ArrowLeft } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Menu, Sun, Moon, Globe, CreditCard, Settings, ArrowLeft } from "lucide-react"
 import { useTheme } from "next-themes"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -13,18 +12,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { useAuth } from "@/contexts/auth-context"
 import { useLanguage, type Language, translations } from "@/contexts/language-context"
 import { useCurrency, type Currency, currencies } from "@/contexts/currency-context"
-import { UserMenu } from "@/components/user-menu"
 import { LanguageCurrencySelector } from "@/components/language-currency-selector"
 import { ConfigForm } from "@/components/config-form"
-import type { Budget, Int } from "@/types"
+import type { Budget } from "@/types"
 
 interface HeaderMenuProps {
   budget: Budget
   onUpdateConfig: (config: {
-    startAmount?: Int
+    startAmount?: number
     endDate?: Date | undefined
     mode?: "daily" | "track"
     autoSave?: boolean
@@ -37,20 +34,17 @@ type SheetView = "menu" | "settings"
 export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<SheetView>("menu")
+  const [mounted, setMounted] = useState(false)
   const { theme, setTheme, resolvedTheme } = useTheme()
-  const { user, signOut } = useAuth()
   const { t, language, setLanguage } = useLanguage()
   const { currency, setCurrency } = useCurrency()
-  const router = useRouter()
+
+  // SSR-safe: next-themes no resuelve el tema real (system) hasta el cliente.
+  // Renderizar el botón con el theme del server causaría hydration mismatch.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydration guard: must defer to client
+  useEffect(() => setMounted(true), [])
 
   const isDarkMode = (theme || resolvedTheme) === "dark"
-
-  const handleSignOut = async () => {
-    await signOut()
-    setOpen(false)
-    router.replace("/login")
-    router.refresh()
-  }
 
   const handleOpenSettings = () => setView("settings")
   const handleBackToMenu = () => setView("menu")
@@ -65,18 +59,23 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
     <>
       {/* Desktop: inline icons */}
       <div className="hidden sm:flex items-center space-x-2">
-        <UserMenu />
         <LanguageCurrencySelector />
         <Button
           variant="ghost"
           size="icon"
+          data-testid="theme-toggle"
           onClick={() => setTheme(isDarkMode ? "light" : "dark")}
-          title={isDarkMode ? t("lightMode") : t("darkMode")}
+          title={mounted ? (isDarkMode ? t("lightMode") : t("darkMode")) : undefined}
+          aria-label={mounted ? (isDarkMode ? t("lightMode") : t("darkMode")) : undefined}
         >
-          {isDarkMode ? (
-            <Sun className="h-5 w-5" />
+          {mounted ? (
+            isDarkMode ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )
           ) : (
-            <Moon className="h-5 w-5" />
+            <Sun className="h-5 w-5" />
           )}
         </Button>
       </div>
@@ -97,25 +96,6 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
                 </SheetHeader>
 
                 <nav className="flex flex-col px-6 pb-6" aria-label="Menu options">
-                  {/* User info */}
-                  {user && (
-                    <div className="flex items-center gap-3 py-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
-                        <User className="h-4 w-4" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium leading-none">
-                          {user.email?.split("@")[0] ?? ""}
-                        </span>
-                        <span className="text-xs text-muted-foreground mt-1">
-                          {user.email}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <Separator />
-
                   {/* Language */}
                   <div className="py-3">
                     <div className="flex items-center gap-3 mb-2">
@@ -185,19 +165,6 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
                     <Settings className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">{t("budgetConfiguration")}</span>
                   </button>
-
-                  <Separator />
-
-                  {/* Sign out */}
-                  {user && (
-                    <button
-                      className="flex items-center gap-3 py-3 w-full text-left hover:bg-muted/50 rounded-md px-1 -ml-1 transition-colors text-destructive"
-                      onClick={handleSignOut}
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span className="text-sm font-medium">{t("authSignOut")}</span>
-                    </button>
-                  )}
                 </nav>
               </>
             ) : (

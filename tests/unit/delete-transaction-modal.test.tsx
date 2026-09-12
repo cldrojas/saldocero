@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { DeleteTransactionModal } from '@/components/modals/delete-transaction-modal'
 import { LanguageProvider } from '@/contexts/language-context'
 import { CurrencyProvider } from '@/contexts/currency-context'
-import { Transaction, Int } from '@/types'
+import { Transaction } from '@/types'
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
@@ -18,7 +18,7 @@ describe('DeleteTransactionModal', () => {
   const baseTransaction: Transaction = {
     id: '1',
     type: 'expense',
-    amount: -1500 as Int,
+    amount: -1500,
     description: 'Groceries',
     account: 'daily',
     date: new Date('2024-01-15')

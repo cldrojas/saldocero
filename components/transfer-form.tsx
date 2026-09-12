@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from "react"
-import { Account, Int, toInt } from "@/types"
+import { Account, toInt } from "@/types"
 import { ArrowRightLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/error-boundary"
 
 interface TransferFormProps {
   accounts: Account[]
-  onTransfer: (transfer: { amount: Int; fromAccount: string; toAccount: string; description?: string }) => void
+  onTransfer: (transfer: { amount: number; fromAccount: string; toAccount: string; description?: string }) => void
 }
 
 export function TransferForm({ accounts, onTransfer }: TransferFormProps) {

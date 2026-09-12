@@ -1,44 +1,36 @@
 import { defineConfig, devices } from '@playwright/test'
-import dotenv from 'dotenv'
-
-// Carga credenciales del usuario de prueba desde .env.e2e
-// (copiar .env.e2e.example → .env.e2e con los valores reales).
-dotenv.config({ path: '.env.e2e' })
+import { E2E_DB_PATH } from './tests/ui/e2e-db'
 
 export default defineConfig({
   testDir: 'tests/ui',
   timeout: 30_000,
   use: {
     headless: true,
-    viewport: { width: 1280, height: 720 }
+    viewport: { width: 1280, height: 720 },
+    baseURL: 'http://localhost:3100',
+    // Locale fijo para que navigator.language coincida con el SSR ('es') y no
+    // rompa la hidratación del language selector en los E2E.
+    locale: 'es-ES',
+    // ColorScheme fijo (light) para que next-themes resuelva el mismo tema en
+    // server y cliente (el server usa defaultTheme="dark" + enableSystem).
+    colorScheme: 'light',
   },
   webServer: {
-    command: 'pnpm dev',
-    port: 3000,
-    reuseExistingServer: true,
-    timeout: 120_000
+    // Dev server dedicado para E2E: puerto propio (3100) y DB de test aislada.
+    // No pisa el dev server del usuario en :3000 ni su DB real.
+    command: 'pnpm exec next dev -p 3100',
+    env: {
+      SQLITE_DB_PATH: E2E_DB_PATH,
+      NEXT_DIST_DIR: '.next-e2e',
+    },
+    port: 3100,
+    reuseExistingServer: false,
+    timeout: 120_000,
   },
   projects: [
     {
-      name: 'setup',
-      testMatch: /auth\.setup\.ts/,
-      use: { ...devices['Desktop Chrome'] }
-    },
-    {
       name: 'chromium',
-      // Specs de la app: requieren sesión (storageState del proyecto `setup`).
-      testIgnore: [/auth\.setup\.ts/, /auth\.spec\.ts/],
-      dependencies: ['setup'],
-      use: {
-        ...devices['Desktop Chrome'],
-        storageState: 'tests/ui/.auth/user.json'
-      }
+      use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'chromium-auth',
-      // Flujos de auth: corren SIN sesión para probar redirect/validación/login.
-      testMatch: /auth\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'] }
-    }
-  ]
+  ],
 })

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Account, Budget, Int } from '@/types'
+import { Account } from '@/types'
 import {
   Wallet,
   PiggyBank,
@@ -68,7 +68,6 @@ const iconMap = {
 
 interface AccountsListProps {
   accounts: Account[]
-  budget: Budget
   onAddAccount: (account: Omit<Account, 'id'>) => void
   onUpdateAccount: (account: Account) => void
   onDeleteAccount: (accountId: string) => boolean
@@ -76,7 +75,6 @@ interface AccountsListProps {
 
 export function AccountsList({
   accounts,
-  budget,
   onAddAccount,
   onUpdateAccount,
   onDeleteAccount
@@ -89,11 +87,8 @@ export function AccountsList({
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
-  // Filter accounts based on mode (hide savings in track mode)
-  const isTrackMode = budget.mode === 'track' || (!budget.mode && !budget.endDate)
-  const filteredAccounts = isTrackMode
-    ? accounts.filter(acc => acc.id !== 'savings')
-    : accounts
+  // Show all accounts regardless of mode
+  const filteredAccounts = accounts
 
   const handleEditClick = (account: Account) => {
     setEditingAccount(account)
@@ -116,7 +111,7 @@ export function AccountsList({
     setAccountToDelete(null)
   }
 
-  const handleSaveEdit = (updatedAccount: { id?: string; name: string; balance: Int; icon: string }) => {
+  const handleSaveEdit = (updatedAccount: { id?: string; name: string; balance: number; icon: string }) => {
     if (editingAccount) {
       onUpdateAccount({
         ...editingAccount,

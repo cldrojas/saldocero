@@ -1,5 +1,4 @@
 import { addDays, subDays } from 'date-fns'
-import { toInt } from '@/types'
 import type { TestAppState, TestAccountConfig } from './test-utils'
 
 /**
@@ -212,7 +211,7 @@ export const WITH_TRANSACTIONS_SETUP: TestAppState = {
     {
       id: 'test-tx-1',
       type: 'expense',
-      amount: toInt(-50),
+      amount: -50,
       description: 'Lunch',
       account: 'daily',
       date: subDays(new Date(), 2)
@@ -220,7 +219,7 @@ export const WITH_TRANSACTIONS_SETUP: TestAppState = {
     {
       id: 'test-tx-2',
       type: 'income',
-      amount: toInt(200),
+      amount: 200,
       description: 'Salary deposit',
       account: 'daily',
       date: subDays(new Date(), 5)
@@ -228,7 +227,7 @@ export const WITH_TRANSACTIONS_SETUP: TestAppState = {
     {
       id: 'test-tx-3',
       type: 'transfer',
-      amount: toInt(100),
+      amount: 100,
       description: 'Transfer to savings',
       account: 'savings',
       date: subDays(new Date(), 1)

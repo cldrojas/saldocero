@@ -61,7 +61,7 @@ export function DailyBudgetStatus({
 
   // Which balance to display in track mode: a specific account id, or the total across all accounts.
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    () => window.localStorage.getItem(SELECTED_BALANCE_ACCOUNT_KEY) || TOTAL_ACCOUNTS_VALUE
+    () => (typeof window !== 'undefined' ? window.localStorage.getItem(SELECTED_BALANCE_ACCOUNT_KEY) : null) || TOTAL_ACCOUNTS_VALUE
   )
 
   const handleSelectedAccountChange = (value: string) => {
@@ -100,7 +100,7 @@ export function DailyBudgetStatus({
                 <SelectValue placeholder={t('selectBalanceAccount')} />
               </SelectTrigger>
               <SelectContent className="min-w-[12rem]">
-                <SelectItem value={TOTAL_ACCOUNTS_VALUE}>{t('totalBudget')}</SelectItem>
+                <SelectItem value={TOTAL_ACCOUNTS_VALUE}>{t('totalAllAccounts')}</SelectItem>
                 {visibleAccounts.map(account => (
                   <SelectItem key={account.id} value={account.id}>
                     {account.name}
@@ -109,7 +109,7 @@ export function DailyBudgetStatus({
               </SelectContent>
             </Select>
           ) : (
-            <CardTitle>{t('totalBudget') || 'Total Balance'}</CardTitle>
+            <CardTitle>{t('totalAllAccounts') || 'All accounts'}</CardTitle>
           )}
           <CardDescription>{t('trackModeDescription') || 'Track your spending'}</CardDescription>
         </CardHeader>
