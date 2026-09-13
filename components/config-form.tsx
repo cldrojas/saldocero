@@ -14,6 +14,7 @@ import { toInt, type Budget } from "@/types"
 import ConfirmDialog from "@/components/modals/confirm-dialog"
 import { Checkbox } from "./ui/checkbox"
 import { useBudget } from "@/hooks/use-budget"
+import ImportJsonModal from "@/components/import-json-modal"
 
 export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
   budget: Budget, onClearData: () => void, onUpdateConfig: (config: {
@@ -25,14 +26,22 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
 }) {
   const { t } = useLanguage()
   const { toast } = useToast()
-  const { setLastCheckedDay, accounts, transactions, dailyAllowance, remainingToday, progress, isSetup } = useBudget()
+  const { setLastCheckedDay, accounts, transactions, dailyAllowance, remainingToday, progress, isSetup, refresh } = useBudget()
   const [isOpen, setIsOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDeleteDateConfirm, setShowDeleteDateConfirm] = useState(false)
   const [autoSave, setAutoSave] = useState(budget.autoSave)
   const [startAmount, setStartAmount] = useState(budget.startAmount)
   const [endDate, setEndDate] = useState(budget.endDate)
   const [mode, setMode] = useState<'daily' | 'track'>(budget.mode || (budget.endDate ? 'daily' : 'track'))
+
+  async function handleImported(): Promise<void> {
+    // El modal ya aplicó el import y volcó a IndexedDB; refresco el estado del
+    // hook para que la UI refleje los datos importados (D7: el parent orquesta).
+    await refresh()
+    toast({ title: t('importSuccess') })
+  }
 
   const getYesterday = () => {
     const yesterday = new Date()
@@ -90,7 +99,8 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
   }
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
+    <>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
       <CollapsibleTrigger asChild>
         <Button variant="outline" className="flex items-center justify-between w-full">
           <span>{t("budgetConfiguration")}</span>
@@ -105,7 +115,7 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
-              <div className="flex justify-between mb-4">
+              <div className="flex gap-2 mb-4">
                 <Button
                   type="button"
                   variant="secondary"
@@ -156,6 +166,14 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
                   }}
                 >
                   {t("exportData")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setImportOpen(true)}
+                  data-testid="import-data-button"
+                >
+                  {t("importData")}
                 </Button>
               </div>
               <div className="space-y-2">
@@ -265,5 +283,11 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
         </Card>
       </CollapsibleContent>
     </Collapsible>
+    <ImportJsonModal
+      open={importOpen}
+      onOpenChange={setImportOpen}
+      onImported={handleImported}
+    />
+    </>
   )
 }

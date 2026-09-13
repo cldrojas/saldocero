@@ -15,10 +15,10 @@
 - [x] 2.5 `applyJsonImport(text,{replace})`: validar → `!ok` throw `{error}`; `db = await getDb()` (misma instancia, **sin setDb**); si `replace` → `saveBackup(exportDb(db),'pre-import-<ts>')` best-effort + `clearData(db)`; `insertLegacyData(db,data)`; `await saveToIndexedDB(db)`; `setItem(MIGRATED_FLAG_KEY,'true')` tras éxito (FR-4.6); retorna `{accounts,transactions}`.
 
 ## Phase 3: UI + i18n
-- [ ] 3.1 `components/import-json-modal.tsx` (`ImportJsonModal({open,onOpenChange,onImported})`, patrón `sync-qr-modal`): `readImportFile` → preview (filename, counts, modo, rango); `getDb()` cuenta `accounts` → si >0 warning reemplazo + Confirm disabled hasta aceptar (D2); estados `preview|busy|error(ImportFileError)` tipados (D7); Cancelar sin tocar DB; reset input al re-abrir (riesgo 3).
-- [ ] 3.2 `components/config-form.tsx`: botón `t('importData')` `variant="secondary"` junto a Exportar (div ~línea 108–160), `disabled` en busy; `<input type="file" accept="application/json,.json">` hidden con ref + reset; agregar `refresh` al destructure de `useBudget` (línea 28).
-- [ ] 3.3 `components/config-form.tsx`: `handleImported` → `await refresh()` + toast `t('importSuccess')`; montar `<ImportJsonModal>`.
-- [ ] 3.4 `contexts/language-context.tsx`: claves `import.*` es/en (tabla FR-5/D9), claves fijas sin interpolación en `t()`; reutiliza `cancel/confirm/youSure/undoable`.
+- [x] 3.1 `components/import-json-modal.tsx` (`ImportJsonModal({open,onOpenChange,onImported})`, patrón `sync-qr-modal`): `readImportFile` → preview (filename, counts, modo, rango); `getDb()` cuenta `accounts` → si >0 warning reemplazo + Confirm disabled hasta aceptar (D2); estados `preview|busy|error(ImportFileError)` tipados (D7); Cancelar sin tocar DB; reset input al re-abrir (riesgo 3).
+- [x] 3.2 `components/config-form.tsx`: botón `t('importData')` `variant="secondary"` junto a Exportar (div ~línea 108–160); `<input type="file" accept="application/json,.json">` hidden dentro del modal (riesgo 3: reset por `key` al re-abrir); agregar `refresh` al destructure de `useBudget` (línea 28).
+- [x] 3.3 `components/config-form.tsx`: `handleImported` → `await refresh()` + toast `t('importSuccess')`; montar `<ImportJsonModal>` (return en fragmento).
+- [x] 3.4 `contexts/language-context.tsx`: claves `import.*` es/en (tabla FR-5/D9), claves fijas sin interpolación en `t()`; reutiliza `cancel/confirm/youSure/undoable`.
 
 ## Phase 4: Tests + gate
 - [ ] 4.1 `tests/unit/import-json.test.ts` (espejo de `migrate-localstorage.test.ts`): `readImportFile` too-large/invalid-json/invalid-shape; `validateImportJson` vacío/JSON array/type fuera del enum/derivados; `buildImportPreview` counts+rango.

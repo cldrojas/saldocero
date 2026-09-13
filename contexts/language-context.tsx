@@ -46,6 +46,22 @@ export const translations = {
     exportData: 'Export Data',
     cancel: 'Cancel',
 
+    // Import JSON
+    importData: 'Import Data',
+    importSuccess: 'Data imported successfully',
+    importErrorInvalidJson: 'The file is not valid JSON',
+    importErrorInvalidShape: 'The file does not have the expected format',
+    importErrorTooLarge: 'The file is too large (max 10 MB)',
+    importErrorUnexpected: 'An unexpected error occurred while importing',
+    importPreviewTitle: 'Import from file',
+    importFile: 'Choose file',
+    importPreviewAccounts: 'Accounts',
+    importPreviewTransactions: 'Transactions',
+    importPreviewMode: 'Mode',
+    importPreviewDateRange: 'Date range',
+    importConfirm: 'Confirm import',
+    importOverwriteWarning: 'This will replace your current data',
+
     // Tabs
     expenses: 'Expenses',
     transfer: 'Transfer',
@@ -259,6 +275,22 @@ export const translations = {
     clearData: 'Borrar todos los datos',
     exportData: 'Exportar datos',
     cancel: 'Cancelar',
+
+    // Import JSON
+    importData: 'Importar datos',
+    importSuccess: 'Datos importados correctamente',
+    importErrorInvalidJson: 'El archivo no es un JSON válido',
+    importErrorInvalidShape: 'El archivo no tiene el formato esperado',
+    importErrorTooLarge: 'El archivo es demasiado grande (máximo 10 MB)',
+    importErrorUnexpected: 'Ocurrió un error inesperado al importar',
+    importPreviewTitle: 'Importar desde archivo',
+    importFile: 'Seleccionar archivo',
+    importPreviewAccounts: 'Cuentas',
+    importPreviewTransactions: 'Transacciones',
+    importPreviewMode: 'Modo',
+    importPreviewDateRange: 'Rango de fechas',
+    importConfirm: 'Confirmar importación',
+    importOverwriteWarning: 'Esto reemplazará tus datos actuales',
 
     // Tabs
     expenses: 'Gastos',
