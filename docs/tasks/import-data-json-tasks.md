@@ -8,11 +8,11 @@
 - [x] 1.4 Gate: `pnpm exec vitest run tests/unit/migrate-localstorage.test.ts` (equivalente single-run de `pnpm test`) — verde (11/11) + `pnpm tsc --noEmit` limpio (no-regresión, D1).
 
 ## Phase 2: Librería de import (`lib/import-json.ts`, nuevo)
-- [ ] 2.1 `MAX_IMPORT_BYTES = 10*1024*1024`; tipos `ImportFileError`, `ImportParseResult`, `ImportPreview`.
-- [ ] 2.2 `readImportFile(file)`: `file.size > MAX` → `'too-large'` antes de leer; `text()` + `JSON.parse` catch → `'invalid-json'`; delega en `validateImportJson`.
-- [ ] 2.3 `validateImportJson(text)`: type guard estricto — budget (`startAmount:number`, `mode:'daily'|'track'`, `isSetup:boolean`), `accounts[]` (`name`/`type`/`balance`/`hidden`, `type` dentro de `daily|savings|investment|custom|expense`), `transactions[]` (`type`/`amount`/`account`) → falla temprano `'invalid-shape'`; derivados (`dailyAllowance/remainingToday/progress/lastCheckedDay`) tolerados e ignorados (D7).
-- [ ] 2.4 `buildImportPreview(data)`: puro (sin DB) — counts, mode, rango min/max de `tx.date` (`{start:null,end:null}` sin txs), `hasConfiguredBudget` (isSetup).
-- [ ] 2.5 `applyJsonImport(text,{replace})`: validar → `!ok` throw `{error}`; `db = await getDb()` (misma instancia, **sin setDb**); si `replace` → `saveBackup(exportDb(db),'pre-import-<ts>')` best-effort + `clearData(db)`; `insertLegacyData(db,data)`; `await saveToIndexedDB(db)`; `setItem(MIGRATED_FLAG_KEY,'true')` tras éxito (FR-4.6); retorna `{accounts,transactions}`.
+- [x] 2.1 `MAX_IMPORT_BYTES = 10*1024*1024`; tipos `ImportFileError`, `ImportParseResult`, `ImportPreview`.
+- [x] 2.2 `readImportFile(file)`: `file.size > MAX` → `'too-large'` antes de leer; `text()` + `JSON.parse` catch → `'invalid-json'`; delega en `validateImportJson`.
+- [x] 2.3 `validateImportJson(text)`: type guard estricto — budget (`startAmount:number`, `mode:'daily'|'track'`, `isSetup:boolean`), `accounts[]` (`name`/`type`/`balance`/`hidden`, `type` dentro de `daily|savings|investment|custom|expense`), `transactions[]` (`type`/`amount`/`account`) → falla temprano `'invalid-shape'`; derivados (`dailyAllowance/remainingToday/progress/lastCheckedDay`) tolerados e ignorados (D7).
+- [x] 2.4 `buildImportPreview(data)`: puro (sin DB) — counts, mode, rango min/max de `tx.date` (`{start:null,end:null}` sin txs), `hasConfiguredBudget` (isSetup).
+- [x] 2.5 `applyJsonImport(text,{replace})`: validar → `!ok` throw `{error}`; `db = await getDb()` (misma instancia, **sin setDb**); si `replace` → `saveBackup(exportDb(db),'pre-import-<ts>')` best-effort + `clearData(db)`; `insertLegacyData(db,data)`; `await saveToIndexedDB(db)`; `setItem(MIGRATED_FLAG_KEY,'true')` tras éxito (FR-4.6); retorna `{accounts,transactions}`.
 
 ## Phase 3: UI + i18n
 - [ ] 3.1 `components/import-json-modal.tsx` (`ImportJsonModal({open,onOpenChange,onImported})`, patrón `sync-qr-modal`): `readImportFile` → preview (filename, counts, modo, rango); `getDb()` cuenta `accounts` → si >0 warning reemplazo + Confirm disabled hasta aceptar (D2); estados `preview|busy|error(ImportFileError)` tipados (D7); Cancelar sin tocar DB; reset input al re-abrir (riesgo 3).
