@@ -30,7 +30,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { useLanguage } from '@/contexts/language-context'
-import { Int, toInt } from '@/types'
+import { toInt } from '@/types'
 
 // Define available icons
 const availableIcons = [
@@ -51,10 +51,10 @@ const availableIcons = [
 ]
 
 export function AccountEditModal({ account, isOpen, onClose, onSave }: {
-  account: { id: string; name: string; balance: Int; icon: string } | null,
+  account: { id: string; name: string; balance: number; icon: string } | null,
   isOpen: boolean,
   onClose: () => void,
-  onSave: (updatedAccount: { id?: string; name: string; balance: Int; icon: string }) => void
+  onSave: (updatedAccount: { id?: string; name: string; balance: number; icon: string }) => void
 }) {
   const { t } = useLanguage()
   const { toast } = useToast()
@@ -78,7 +78,7 @@ export function AccountEditModal({ account, isOpen, onClose, onSave }: {
       ...account,
       name: accountName,
       icon: selectedIcon,
-      balance: accountBalance || 0 as Int
+      balance: accountBalance || 0
     })
 
     toast({

@@ -4,14 +4,14 @@ import { describe, it, expect, vi } from 'vitest'
 import { TransactionList } from '@/components/transactions-list'
 import { LanguageProvider } from '@/contexts/language-context'
 import { CurrencyProvider } from '@/contexts/currency-context'
-import { Transaction, Int } from '@/types'
+import { Transaction } from '@/types'
 
 // Mock useBudget to provide accounts without localStorage side effects
 vi.mock('@/hooks/use-budget', () => ({
   useBudget: () => ({
     accounts: [
-      { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' },
-      { id: 'savings', name: 'Savings', type: 'savings', balance: 500 as Int, icon: 'piggybank' }
+      { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000, icon: 'wallet' },
+      { id: 'savings', name: 'Savings', type: 'savings', balance: 500, icon: 'piggybank' }
     ]
   })
 }))
@@ -26,7 +26,7 @@ function renderWithProviders(ui: React.ReactElement) {
 
 describe('TransactionList', () => {
   const defaultAccounts = [
-    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' }
+    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000, icon: 'wallet' }
   ]
 
   it('renders expense transactions', () => {
@@ -34,7 +34,7 @@ describe('TransactionList', () => {
       {
         id: '1',
         type: 'expense',
-        amount: -1500 as Int,
+        amount: -1500,
         description: 'Groceries',
         account: 'daily',
         date: new Date('2024-01-15')
@@ -56,7 +56,7 @@ describe('TransactionList', () => {
     const expenseTransaction: Transaction = {
       id: 'exp-1',
       type: 'expense',
-      amount: -1000 as Int,
+      amount: -1000,
       description: 'Groceries',
       account: 'daily',
       date: new Date('2024-01-15')
@@ -65,7 +65,7 @@ describe('TransactionList', () => {
     const adjustmentTransaction: Transaction = {
       id: 'adj-1',
       type: 'adjustment',
-      amount: -500 as Int,
+      amount: -500,
       description: 'Balance adjustment',
       account: 'daily',
       date: new Date('2024-01-15')
@@ -90,7 +90,7 @@ describe('TransactionList', () => {
     const incomeTransaction: Transaction = {
       id: 'inc-1',
       type: 'income',
-      amount: 5000 as Int,
+      amount: 5000,
       description: 'Paycheck',
       account: 'daily',
       date: new Date('2024-01-15')
@@ -99,7 +99,7 @@ describe('TransactionList', () => {
     const expenseTransaction: Transaction = {
       id: 'exp-1',
       type: 'expense',
-      amount: -2000 as Int,
+      amount: -2000,
       description: 'Dinner',
       account: 'daily',
       date: new Date('2024-01-15')
@@ -125,7 +125,7 @@ describe('TransactionList', () => {
       {
         id: 'adj-1',
         type: 'adjustment',
-        amount: -500 as Int,
+        amount: -500,
         description: 'Balance adjustment',
         account: 'daily',
         date: new Date('2024-01-15')

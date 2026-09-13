@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { useLanguage } from '@/contexts/language-context'
-import { Account, Int, toInt } from '@/types'
+import { Account, toInt } from '@/types'
 
 // Define available icons
 const availableIcons = [
@@ -45,7 +45,6 @@ export function AccountModal({
   isOpen,
   onClose,
   onAddAccount,
-  accounts
 }: {
   isOpen: boolean
   onClose: () => void
@@ -74,7 +73,7 @@ export function AccountModal({
       name: accountName,
       type: accountType,
       icon: selectedIcon,
-      balance: toInt(0) as Int
+      balance: toInt(0) ?? 0
     })
 
     toast({

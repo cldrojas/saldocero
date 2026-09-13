@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/date-picker";
-import { Int, toInt } from "@/types";
+import { toInt } from "@/types";
 
 /**
  * Component for setting up the initial budget.
@@ -19,10 +19,10 @@ import { Int, toInt } from "@/types";
 export function SetupForm({
   onSetup
 }: {
-  onSetup: (data: { startAmount: Int; endDate?: Date; mode: 'daily' | 'track' }) => void
+  onSetup: (data: { startAmount: number; endDate?: Date; mode: 'daily' | 'track' }) => void
 }) {
   const { t } = useLanguage()
-  const [startAmount, setStartAmount] = useState<Int | null>(null)
+  const [startAmount, setStartAmount] = useState<number | null>(null)
   const [endDate, setEndDate] = useState<Date | undefined>(undefined)
   const [mode, setMode] = useState<'daily' | 'track'>('daily')
 
