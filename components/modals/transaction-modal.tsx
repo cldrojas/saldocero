@@ -25,7 +25,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useLanguage } from '@/contexts/language-context'
 import { useCurrency } from '@/contexts/currency-context'
 import { DatePicker } from '../date-picker'
-import { Int, Transaction, TransactionType, toInt } from '@/types'
+import { Account, Transaction, TransactionType, toInt } from '@/types'
 
 export function TransactionModal({
   isOpen,
@@ -40,7 +40,7 @@ export function TransactionModal({
   onClose: () => void
   onAddTransaction: (transaction: Omit<Transaction, 'id'>) => void
   onUpdateTransaction: (transaction: Transaction) => void
-  accounts: { id: string; name: string }[]
+  accounts: Account[]
   remainingToday: number
   transaction?: Transaction | null
 }) {
@@ -81,7 +81,7 @@ export function TransactionModal({
       onUpdateTransaction({
         ...transaction,
         type: transactionType,
-        amount: toInt(transaction.amount < 0 ? -amount : amount) as Int, // Preserve sign
+        amount: toInt(transaction.amount < 0 ? -amount : amount) ?? 0, // Preserve sign
         description,
         account,
         date
@@ -95,7 +95,7 @@ export function TransactionModal({
       // Add new transaction
       onAddTransaction({
         type: transactionType,
-        amount: toInt(amount) as Int,
+        amount: toInt(amount) ?? 0,
         description,
         account,
         date
@@ -118,6 +118,7 @@ export function TransactionModal({
   }
 
   const isEditing = !!transaction
+  const selectedAccount = accounts.find((acc) => acc.id === account)
 
   return (
     <Dialog
@@ -189,6 +190,22 @@ export function TransactionModal({
                 {t('expenseExceedsWarning')}
               </p>
             )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {[1000, 2000, 5000, 10000].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAmount(value)}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                    amount === value
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-input hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  {value.toLocaleString('es-AR')}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -208,7 +225,9 @@ export function TransactionModal({
               onValueChange={setAccount}
             >
               <SelectTrigger>
-                <SelectValue placeholder={t('selectAccount')} />
+                <SelectValue placeholder={t('selectAccount')}>
+                  {selectedAccount?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {accounts.map((acc) => (
@@ -216,7 +235,12 @@ export function TransactionModal({
                     key={acc.id}
                     value={acc.id}
                   >
-                    {acc.name}
+                    <span className="flex w-full items-center justify-between gap-4">
+                      <span>{acc.name}</span>
+                      <span className={`tabular-nums ${acc.balance < 0 ? 'text-red-600 dark:text-red-500' : 'text-muted-foreground'}`}>
+                        {formatCurrency(acc.balance)}
+                      </span>
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>

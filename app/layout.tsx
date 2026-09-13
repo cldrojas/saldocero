@@ -4,7 +4,6 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
 import { LanguageProvider } from '@/contexts/language-context'
 import { CurrencyProvider } from '@/contexts/currency-context'
-import { AuthProvider } from '@/contexts/auth-context'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -34,12 +33,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           storageKey="theme"
         >
           <LanguageProvider>
-            <AuthProvider>
-              <CurrencyProvider>
-                {children}
-                <Toaster />
-              </CurrencyProvider>
-            </AuthProvider>
+            <CurrencyProvider>
+              {children}
+              <Toaster />
+            </CurrencyProvider>
           </LanguageProvider>
         </ThemeProvider>
       </body>

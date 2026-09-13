@@ -21,14 +21,14 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { useLanguage } from '@/contexts/language-context'
-import { Account, Int, toInt } from '@/types'
+import { Account, toInt } from '@/types'
 import { useCurrency } from '@/contexts/currency-context'
 
 interface TransferModalProps {
   isOpen: boolean
   onClose: () => void
   onTransfer: (transfer: {
-    amount: Int
+    amount: number
     fromAccount: string
     toAccount: string
     description?: string

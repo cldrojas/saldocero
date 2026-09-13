@@ -1,170 +1,16 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-import { Page } from '@playwright/test'
+// tests/ui/test-utils.ts
+// Helpers E2E post-pivote offline-first: la app es 100% client-side
+// (sql.js WASM + IndexedDB en el browser) y Playwright aísla el storage por
+// test, así que el estado se prepara SIEMPRE vía la UI real (fillSetupForm).
+// Ya no existe el stack server (app/actions + better-sqlite3), por lo que los
+// helpers legacy de seed/lectura directa en SQLite fueron eliminados.
+import type { Page } from '@playwright/test'
 import { addDays } from 'date-fns'
-import { toInt } from '@/types'
 
 export interface TestBudgetConfig {
   startAmount: number
   endDate?: Date
   autoSave?: boolean
-}
-
-export interface TestAccountConfig {
-  id: string
-  name: string
-  type: string
-  balance: number
-  icon: string
-}
-
-export interface TestAppState {
-  budget: TestBudgetConfig
-  accounts: TestAccountConfig[]
-  transactions?: any[]
-  isSetup: boolean
-}
-
-/**
- * Default test configuration for budget app
- */
-export const DEFAULT_TEST_CONFIG: TestAppState = {
-  budget: {
-    startAmount: 1000,
-    endDate: addDays(new Date(), 30),
-    autoSave: true
-  },
-  accounts: [
-    {
-      id: 'daily',
-      name: 'Daily Budget',
-      type: 'daily',
-      balance: 1000,
-      icon: 'wallet'
-    },
-    {
-      id: 'savings',
-      name: 'Savings',
-      type: 'savings',
-      balance: 500,
-      icon: 'piggybank'
-    },
-    {
-      id: 'investment',
-      name: 'Investment',
-      type: 'investment',
-      balance: 2000,
-      icon: 'trending-up'
-    }
-  ],
-  isSetup: true
-}
-
-/**
- * Clears all localStorage data for the app
- */
-export async function clearAppData(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    // Clear localStorage data
-    localStorage.removeItem('daily-budget-data')
-
-    // Override localStorage methods to ensure they work in test environment
-    const originalSetItem = localStorage.setItem
-    const originalGetItem = localStorage.getItem
-    const originalRemoveItem = localStorage.removeItem
-
-    localStorage.setItem = function(key, value) {
-      try {
-        return originalSetItem.call(this, key, value)
-      } catch (e) {
-        console.warn('localStorage.setItem failed:', e)
-        return undefined
-      }
-    }
-
-    localStorage.getItem = function(key) {
-      try {
-        return originalGetItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.getItem failed:', e)
-        return null
-      }
-    }
-
-    localStorage.removeItem = function(key) {
-      try {
-        return originalRemoveItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.removeItem failed:', e)
-        return undefined
-      }
-    }
-  })
-}
-
-/**
- * Sets up the app with test data by manipulating localStorage
- */
-export async function setupTestAppState(page: Page, config: TestAppState = DEFAULT_TEST_CONFIG): Promise<void> {
-  const testData = {
-    budget: {
-      startAmount: toInt(config.budget.startAmount),
-      startDate: new Date(),
-      endDate: config.budget.endDate || addDays(new Date(), 30),
-      autoSave: config.budget.autoSave || true
-    },
-    accounts: config.accounts.map(account => ({
-      id: account.id,
-      name: account.name,
-      type: account.type,
-      balance: toInt(account.balance),
-      icon: account.icon
-    })),
-    transactions: config.transactions || [],
-    dailyAllowance: toInt(config.budget.startAmount / 30), // Rough daily allowance
-    remainingToday: toInt(config.budget.startAmount / 30),
-    progress: 100,
-    lastCheckedDay: new Date(),
-    isSetup: config.isSetup,
-    autoSave: config.budget.autoSave || true
-  }
-
-  // Use addInitScript to set localStorage before page loads
-  await page.addInitScript((data) => {
-    // Set localStorage data
-    localStorage.setItem('daily-budget-data', JSON.stringify(data))
-
-    // Override localStorage methods to ensure they work in test environment
-    const originalSetItem = localStorage.setItem
-    const originalGetItem = localStorage.getItem
-    const originalRemoveItem = localStorage.removeItem
-
-    localStorage.setItem = function(key, value) {
-      try {
-        return originalSetItem.call(this, key, value)
-      } catch (e) {
-        console.warn('localStorage.setItem failed:', e)
-        return undefined
-      }
-    }
-
-    localStorage.getItem = function(key) {
-      try {
-        return originalGetItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.getItem failed:', e)
-        return null
-      }
-    }
-
-    localStorage.removeItem = function(key) {
-      try {
-        return originalRemoveItem.call(this, key)
-      } catch (e) {
-        console.warn('localStorage.removeItem failed:', e)
-        return undefined
-      }
-    }
-  }, testData)
 }
 
 /**
@@ -180,43 +26,12 @@ export async function waitForAppReady(page: Page): Promise<void> {
 }
 
 /**
- * Ensures the app is in a setup state (clears data and shows setup form)
- */
-export async function ensureSetupState(page: Page): Promise<void> {
-  await clearAppData(page)
-  await page.reload()
-  await waitForAppReady(page)
-
-  // Verify we're in setup state
-  await page.waitForSelector('[data-testid="setup-form"]')
-}
-
-/**
- * Ensures the app is in a configured state with test data
- */
-export async function ensureConfiguredState(page: Page, config: TestAppState = DEFAULT_TEST_CONFIG): Promise<void> {
-  await setupTestAppState(page, config)
-  await page.reload()
-  await waitForAppReady(page)
-
-  // Verify we're in configured state (should see main app content)
-  await page.waitForSelector('h1')
-}
-
-/**
- * Gets current app state from localStorage
- */
-export async function getCurrentAppState(page: Page): Promise<any> {
-  return await page.evaluate(() => {
-    const data = localStorage.getItem('daily-budget-data')
-    return data ? JSON.parse(data) : null
-  })
-}
-
-/**
  * Fills out the setup form with test data
  */
-export async function fillSetupForm(page: Page, config: TestBudgetConfig = DEFAULT_TEST_CONFIG.budget): Promise<void> {
+export async function fillSetupForm(
+  page: Page,
+  config: TestBudgetConfig = { startAmount: 500, endDate: addDays(new Date(), 30) }
+): Promise<void> {
   // Wait for setup form to be visible
   await page.waitForSelector('[data-testid="setup-form"]')
 
@@ -244,14 +59,6 @@ export async function fillSetupForm(page: Page, config: TestBudgetConfig = DEFAU
 
   // Wait for setup to complete
   await page.waitForSelector('h1')
-}
-
-/**
- * Creates a fresh app state with custom configuration
- */
-export async function createFreshAppState(page: Page, config: TestAppState): Promise<void> {
-  await ensureSetupState(page)
-  await fillSetupForm(page, config.budget)
 }
 
 /**

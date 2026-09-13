@@ -23,7 +23,12 @@ This file gives focused, actionable guidance for AI coding agents working on the
    - Persistence: state saved to `localStorage` key `daily-budget-data`. When editing state logic, think about backwards compatibility with previously saved shapes (the hook reparses dates on load).
    - Typescript: project is TypeScript-first. If adding functions/components, import types from `types/index.ts` and annotate props to avoid implicit `any` errors (the repo currently fails `tsc` for some components if props are untyped).
 
-4. Developer workflows (commands discovered)
+4. SDD / change workflow
+   - Cambios sustanciales siguen Spec-Driven Development (SDD): PRD (docs/requirements), design (docs/design), migración descriptiva (docs/migrations/YYYY-MM-DD-change.md), tasks (docs/tasks).
+   - **Convención de primer commit**: cada cambio (change) debe tener como PRIMER commit en su nueva rama el resultado de la fase de plan (PRD + design + migración + tasks). La implementación continúa sobre la misma rama en commits posteriores. Tipo de commit del plan: `docs(plan):`.
+   - Todo cambio al modelo de datos DEBE tener su archivo de migración descriptiva en `docs/migrations/` (schema previo, schema nuevo, estrategia de datos, rollback). No considerado completo sin él.
+
+5. Developer workflows (commands discovered)
    - Install: `pnpm install` (or `npm install`). Repository uses pnpm but npm also works.
    - Dev server: `pnpm dev` (runs Next.js frontend)
    - Typecheck: `pnpm tsc --noEmit` (run from repo root)
@@ -33,16 +38,16 @@ This file gives focused, actionable guidance for AI coding agents working on the
        - Coverage: `pnpm test:coverage`
     - Lint: `pnpm lint`. Avoid large refactors without running `pnpm tsc` and `pnpm test`.
 
-5. Integration points / external deps
+6. Integration points / external deps
    - UI libs: Tailwind CSS, Radix UI primitives, Lucide icon set
    - Persistence: no remote backend by default; prepared for Cloudflare Workers / D1 if backend is added (README notes planned integrations).
 
-6. When editing UI that shows accounts or transactions
+7. When editing UI that shows accounts or transactions
    - Always resolve `account` from `useBudget().accounts` (or prop `accounts`) and render `account?.name` directly.
    - Avoid `t(account.name)` — translations are for fixed keys only.
    - When changing transaction/account shapes, update `hooks/use-budget.tsx` and `types/index.ts` together and run `pnpm tsc`.
 
-7. Small examples (copyable)
+8. Small examples (copyable)
    - Resolve and render account name safely:
      const account = accounts.find(acc => acc.id === transaction.account)
      // show literal name, fallback to translation
@@ -51,7 +56,7 @@ This file gives focused, actionable guidance for AI coding agents working on the
    - Add a transaction via hook:
      addTransaction({ type: 'expense', amount: 12.34, description: 'Lunch', account: 'daily', date: new Date() })
 
-8. Files to read first for context
+9. Files to read first for context
    - `hooks/use-budget.tsx`
    - `components/transaction-history.tsx`
    - `components/transactions-list.tsx`
