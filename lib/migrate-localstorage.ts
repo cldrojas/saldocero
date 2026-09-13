@@ -1,4 +1,5 @@
 import { v5 as uuidv5 } from 'uuid'
+import type { Database } from 'sql.js'
 import { getDb } from '@/lib/db/client'
 import { saveToIndexedDB } from '@/lib/db/persistence'
 
@@ -6,14 +7,16 @@ import { saveToIndexedDB } from '@/lib/db/persistence'
 const MIGRATION_NAMESPACE = '3f8e4a12-7b6c-4d9e-8f0a-1b2c3d4e5f6a' as const
 
 const STORAGE_KEY = 'daily-budget-data'
-const MIGRATED_FLAG_KEY = 'daily-budget-data-migrated'
+export const MIGRATED_FLAG_KEY = 'daily-budget-data-migrated'
 
 function stableUuid(type: string): string {
   return uuidv5(`daily-budget-account-${type}`, MIGRATION_NAMESPACE)
 }
 
-// Tipos esperados en localStorage (formato anterior)
-type LocalStorageAccount = {
+// Tipos esperados en localStorage (formato anterior). Se exportan y re-exportan
+// como LegacyImport* para que el import manual (lib/import-json.ts) comparta
+// el mismo contrato de entrada SIN cambiar el shape (D1).
+export type LocalStorageAccount = {
   id: string // slug como 'daily', 'savings', 'investment' o custom
   name: string
   type: string
@@ -22,7 +25,7 @@ type LocalStorageAccount = {
   balance: number
 }
 
-type LocalStorageBudget = {
+export type LocalStorageBudget = {
   startAmount: number
   endDate: string | null
   startDate: string | null
@@ -31,7 +34,7 @@ type LocalStorageBudget = {
   isSetup: boolean
 }
 
-type LocalStorageTransaction = {
+export type LocalStorageTransaction = {
   id?: string
   type: string
   amount: number
@@ -40,7 +43,7 @@ type LocalStorageTransaction = {
   date?: string
 }
 
-type LocalStorageData = {
+export type LocalStorageData = {
   budget: LocalStorageBudget
   accounts: LocalStorageAccount[]
   transactions: LocalStorageTransaction[]
@@ -51,62 +54,24 @@ type LocalStorageData = {
   isSetup: boolean
 }
 
+// Alias legacy para el import manual (D1): el archivo JSON de export tiene
+// EXACTAMENTE el shape de localStorage.
+export type LegacyImportData = LocalStorageData
+export type LegacyImportAccount = LocalStorageAccount
+export type LegacyImportBudget = LocalStorageBudget
+export type LegacyImportTransaction = LocalStorageTransaction
+
 /**
- * migrateFromLocalStorage - Migra datos de localStorage al sql.js del cliente
- * (lib/db/client) y persiste el snapshot resultante a IndexedDB, de forma
- * idempotente.
+ * insertLegacyData - Núcleo de mapeo transaccional (pasos A–D) extraído de
+ * migrateFromLocalStorage (D1): transforma el shape legacy (LocalStorageData)
+ * al schema sql.js actual.
  *
- * Guardas:
- * 1. Si no existe localStorage['daily-budget-data'] → return (nada que migrar)
- * 2. Si la tabla accounts ya tiene filas → return (ya migrado)
- * 3. Si ya fue marcado migrated → return
- *
- * Después de migrar exitosamente: persiste la DB a IndexedDB y marca
- * localStorage['daily-budget-data-migrated'] = 'true'.
- * No elimina localStorage['daily-budget-data'] (backup histórico).
- *
- * Returns true if migration was performed (or already migrated), false if skipped.
+ * Muta db en sitio dentro de una transacción atómica
+ * (BEGIN/COMMIT/ROLLBACK manual: sql.js no expone db.transaction(fn)).
+ * Sin guardas: el CALLER decide cuándo invocar (la migración automática
+ * conserva sus 3 guardas; el import manual salta directo).
  */
-export async function migrateFromLocalStorage(
-  storedData?: string | null,
-  alreadyMigrated?: string | null
-): Promise<boolean> {
-  const data = storedData ?? window.localStorage.getItem(STORAGE_KEY)
-  const migratedFlag = alreadyMigrated ?? window.localStorage.getItem(MIGRATED_FLAG_KEY)
-
-  // Guard 1: Verificar si existe datos en localStorage
-  if (!data) {
-    // No hay datos en localStorage, nada que migrar
-    return false
-  }
-
-  let parsedData: LocalStorageData
-  try {
-    parsedData = JSON.parse(data)
-  } catch {
-    // Datos corruptos, no migrar
-    return false
-  }
-
-  const db = await getDb()
-
-  // Guard 2: Verificar si la tabla accounts ya tiene filas (ya migrado)
-  const countStmt = db.prepare('SELECT COUNT(*) AS count FROM accounts')
-  countStmt.step()
-  const existingAccounts = countStmt.getAsObject() as { count: number }
-  countStmt.free()
-
-  if (existingAccounts.count > 0) {
-    // Ya hay datos en SQLite, presumably migrado previamente
-    return true
-  }
-
-  // Guard 3: Verificar si ya fue marcado como migrado
-  if (migratedFlag === 'true') {
-    // Ya migrado, no hacer nada
-    return true
-  }
-
+export function insertLegacyData(db: Database, parsedData: LocalStorageData): void {
   // Iniciar transacción SQLite para migrar todos los datos (sql.js no expone
   // db.transaction(fn): manejamos BEGIN/COMMIT/ROLLBACK manualmente).
   db.exec('BEGIN')
@@ -243,6 +208,70 @@ export async function migrateFromLocalStorage(
     db.exec('ROLLBACK')
     throw error
   }
+}
+
+/**
+ * migrateFromLocalStorage - Migra datos de localStorage al sql.js del cliente
+ * (lib/db/client) y persiste el snapshot resultante a IndexedDB, de forma
+ * idempotente.
+ *
+ * Guardas:
+ * 1. Si no existe localStorage['daily-budget-data'] → return (nada que migrar)
+ * 2. Si la tabla accounts ya tiene filas → return (ya migrado)
+ * 3. Si ya fue marcado migrated → return
+ *
+ * Después de migrar exitosamente: persiste la DB a IndexedDB y marca
+ * localStorage['daily-budget-data-migrated'] = 'true'.
+ * No elimina localStorage['daily-budget-data'] (backup histórico).
+ *
+ * El mapeo transaccional vive en insertLegacyData (D1): esta función solo
+ * orquesta guardas + parse + persistencia.
+ *
+ * Returns true if migration was performed (or already migrated), false if skipped.
+ */
+export async function migrateFromLocalStorage(
+  storedData?: string | null,
+  alreadyMigrated?: string | null
+): Promise<boolean> {
+  const data = storedData ?? window.localStorage.getItem(STORAGE_KEY)
+  const migratedFlag = alreadyMigrated ?? window.localStorage.getItem(MIGRATED_FLAG_KEY)
+
+  // Guard 1: Verificar si existe datos en localStorage
+  if (!data) {
+    // No hay datos en localStorage, nada que migrar
+    return false
+  }
+
+  let parsedData: LocalStorageData
+  try {
+    parsedData = JSON.parse(data)
+  } catch {
+    // Datos corruptos, no migrar
+    return false
+  }
+
+  const db = await getDb()
+
+  // Guard 2: Verificar si la tabla accounts ya tiene filas (ya migrado)
+  const countStmt = db.prepare('SELECT COUNT(*) AS count FROM accounts')
+  countStmt.step()
+  const existingAccounts = countStmt.getAsObject() as { count: number }
+  countStmt.free()
+
+  if (existingAccounts.count > 0) {
+    // Ya hay datos en SQLite, presumably migrado previamente
+    return true
+  }
+
+  // Guard 3: Verificar si ya fue marcado como migrado
+  if (migratedFlag === 'true') {
+    // Ya migrado, no hacer nada
+    return true
+  }
+
+  // Núcleo de mapeo transaccional (pasos A–D, extraído en D1): muta db en
+  // sitio con BEGIN/COMMIT/ROLLBACK incluidos.
+  insertLegacyData(db, parsedData)
 
   // Persistir el snapshot migrado a IndexedDB para que sobreviva a recargas.
   await saveToIndexedDB(db)

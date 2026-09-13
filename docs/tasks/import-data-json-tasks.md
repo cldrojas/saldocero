@@ -2,10 +2,10 @@
 **Change ID**: `import-data-json` | **Fuente**: `docs/requirements/spec-import-data-json.md` + `docs/design/import-data-json.md` (D1–D11)
 
 ## Phase 1: Fundación — extracción del núcleo de mapeo (D1)
-- [ ] 1.1 `lib/migrate-localstorage.ts`: convertir a `export` los tipos `LocalStorageData/Account/Budget/Transaction` (re-export como `LegacyImportData`…, sin cambiar shape).
-- [ ] 1.2 `lib/migrate-localstorage.ts`: extraer el bloque transaccional actual (pasos A–D, líneas ~112–245) a `export function insertLegacyData(db: Database, parsedData: LocalStorageData): void` — BEGIN → accounts `ON CONFLICT(id) DO NOTHING` → remap `account→account_id` (skip sin mapeo, `tx.id || uuidv4`) → budget `'default'` → COMMIT | ROLLBACK; muta db en sitio, sin guardas.
-- [ ] 1.3 `migrateFromLocalStorage` (guardas 1–3 + `JSON.parse` + `saveToIndexedDB` + `setItem(flag,'true')`) delega en `insertLegacyData`; exportar `MIGRATED_FLAG_KEY`.
-- [ ] 1.4 Gate: `pnpm test` — `tests/unit/migrate-localstorage.test.ts` sigue verde (no-regresión, D1).
+- [x] 1.1 `lib/migrate-localstorage.ts`: convertir a `export` los tipos `LocalStorageData/Account/Budget/Transaction` (re-export como `LegacyImportData`…, sin cambiar shape).
+- [x] 1.2 `lib/migrate-localstorage.ts`: extraer el bloque transaccional actual (pasos A–D, líneas ~112–245) a `export function insertLegacyData(db: Database, parsedData: LocalStorageData): void` — BEGIN → accounts `ON CONFLICT(id) DO NOTHING` → remap `account→account_id` (skip sin mapeo, `tx.id || uuidv4`) → budget `'default'` → COMMIT | ROLLBACK; muta db en sitio, sin guardas.
+- [x] 1.3 `migrateFromLocalStorage` (guardas 1–3 + `JSON.parse` + `saveToIndexedDB` + `setItem(flag,'true')`) delega en `insertLegacyData`; exportar `MIGRATED_FLAG_KEY`.
+- [x] 1.4 Gate: `pnpm exec vitest run tests/unit/migrate-localstorage.test.ts` (equivalente single-run de `pnpm test`) — verde (11/11) + `pnpm tsc --noEmit` limpio (no-regresión, D1).
 
 ## Phase 2: Librería de import (`lib/import-json.ts`, nuevo)
 - [ ] 2.1 `MAX_IMPORT_BYTES = 10*1024*1024`; tipos `ImportFileError`, `ImportParseResult`, `ImportPreview`.
