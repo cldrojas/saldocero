@@ -87,6 +87,13 @@ describe('validateImportJson (4.1)', () => {
     })
   })
 
+  it('acepta export sin hidden en una cuenta (regresión: data real del user)', () => {
+    const seed = legacySeed()
+    const daily = seed.accounts.find((a) => a.type === 'daily')!
+    delete (daily as { hidden?: boolean }).hidden
+    expect(validateImportJson(JSON.stringify(seed))).toEqual({ ok: true, data: seed })
+  })
+
   it('tolera e ignora los campos derivados del blob legacy (D7)', () => {
     const res = validateImportJson(legacyText())
     expect(res.ok).toBe(true)

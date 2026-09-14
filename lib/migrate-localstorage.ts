@@ -21,7 +21,7 @@ export type LocalStorageAccount = {
   name: string
   type: string
   icon: string
-  hidden: boolean
+  hidden?: boolean
   balance: number
 }
 

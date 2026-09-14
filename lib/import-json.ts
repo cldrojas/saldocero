@@ -63,7 +63,7 @@ function isLegacyImportData(value: unknown): value is LegacyImportData {
       return false
     }
     if (typeof account.balance !== 'number') return false
-    if (typeof account.hidden !== 'boolean') return false
+    if (account.hidden !== undefined && typeof account.hidden !== 'boolean') return false
   }
 
   for (const transaction of transactions) {
