@@ -4,7 +4,7 @@
 `import-data-json`
 
 ## Estado
-**En fase de especificación.** Complementa el pivote `sqlite-local` (archivado) y el change `offline-first-ui` (v2). La migración automática solo cubre el caso de `localStorage` presente en el **mismo browser**; este change cubre el caso de un **archivo JSON exportado manualmente** (`daily-budget-export.json` o el blob `daily-budget-data` de `localStorage`), que hoy no tiene vía de recuperación. El usuario selecciona su archivo desde el **mismo contenedor** del botón "Exportar datos" (`config-form.tsx`), la app valida el shape, muestra un **preview** (cuentas, transacciones, modo, fechas), pide confirmación explícita si la DB ya tiene datos, y persiste usando el **mismo mapeo canónico** que la migración automática (`lib/migrate-localstorage.ts`). No requiere archivo de migración de schema.
+**Implementado, verificado y archivado (2026-09-14).** Complementa el pivote `sqlite-local` (archivado) y el change `offline-first-ui` (v2). La migración automática solo cubre el caso de `localStorage` presente en el **mismo browser**; este change cubre el caso de un **archivo JSON exportado manualmente** (`daily-budget-export.json` o el blob `daily-budget-data` de `localStorage`), que hoy no tiene vía de recuperación. El usuario selecciona su archivo desde el **mismo contenedor** del botón "Exportar datos" (`config-form.tsx`), la app valida el shape, muestra un **preview** (cuentas, transacciones, modo, fechas), pide confirmación explícita si la DB ya tiene datos, y persiste usando el **mismo mapeo canónico** que la migración automática (`lib/migrate-localstorage.ts`). No requiere archivo de migración de schema. Verdicto `sdd-verify`: **PASS** — 17/17 tasks, 210/210 unit, tsc clean, 2/2 e2e; los 2 WARNINGs resueltos (W1: enmienda NFR-2, el balance es siempre `SUM` sin `adjustment`; W2: claves i18n `dailyMode`/`trackMode` en `c275dc7`). Checklist de cobertura en la sección "Cobertura del Spec".
 
 ---
 
@@ -106,7 +106,7 @@ Archivos: `lib/import-json.ts` (nuevo) + `lib/migrate-localstorage.ts` (modifica
 4. **Persistir**: `saveToIndexedDB(db)`.
 5. **Refrescar la UI**: llamar `refresh()` del hook (`hooks/use-budget.tsx`, `loadState`) para que la vista se regenere desde la DB importada.
 6. **Toast de éxito** `t('importSuccess')` con resumen (`N cuentas, M movimientos`). Marcar la flag `daily-budget-data-migrated` para que la migración automática no intente sobre-escribir después.
-7. **Transacción atómica**: `BEGIN`/`COMMIT`/`ROLLBACK` (reusa `inTx` de `repository.ts`). `ON CONFLICT(id) DO NOTHING` → idempotente.
+7. **Transacción atómica**: `BEGIN`/`COMMIT`/`ROLLBACK` manual dentro del núcleo de mapeo (`insertLegacyData` en `lib/migrate-localstorage.ts`, compartido con la migración automática). `ON CONFLICT(id) DO NOTHING` → idempotente.
 
 #### Escenario: Import en DB vacía
 - GIVEN la DB no tiene cuentas ni transacciones
@@ -204,7 +204,7 @@ E2E (opcional): `tests/ui/import-json.spec.ts` — subir archivo → preview →
 ### NFR-2: Consistencia de mapeo
 - La DB importada pasa por el **mismo mapeo canónico** que la migración automática (slugs → UUIDs estables v5, re-mapeo `account → account_id`, budgets singleton).
 - El estado derivado del archivo (`dailyAllowance`, `remainingToday`, `progress`, `lastCheckedDay`) **nunca** se importa como autoridad: se recalcula on-demand desde `budgets` + `transactions` vía `lib/cashflow.ts`.
-- El saldo de cuenta se deriva de `SUM(transactions.amount)`, no del campo `balance` del archivo. Si el archivo solo trae saldos sin historial, se genera una transacción de tipo `adjustment` (misma estrategia que la migración).
+- El saldo de cuenta se deriva de `SUM(transactions.amount)`, no del campo `balance` del archivo. Si el archivo solo trae saldos sin historial, el saldo derivado queda en `0` (no se genera ninguna transacción de tipo `adjustment`; el campo `balance` del archivo nunca se importa como autoridad).
 
 ### NFR-3: Seguridad e integridad
 - El archivo es texto procesado solo client-side: el parseo no evalúa código, no hay `eval`, no hay ejecución de contenido del archivo.
@@ -256,7 +256,7 @@ E2E (opcional): `tests/ui/import-json.spec.ts` — subir archivo → preview →
 | FR-5 i18n | ✅ COVERED | `language-context.test.tsx` (keys exist) | Claves fijas junto a exportData |
 | FR-6 Tests | ✅ COVERED | Propio (suite espejo) | mantiene tests existentes verdes |
 | NFR-1 Sin migración | ✅ COVERED | Declaración en spec + ausencia migration file | Regla repo satisfecha |
-| NFR-2 Consistencia mapeo | ✅ COVERED | `import-json.test.ts` (mismo mapeo que migración) | UUIDs v5, adjustment |
+| NFR-2 Consistencia mapeo | ✅ COVERED | `import-json.test.ts` (mismo mapeo que migración) | UUIDs v5; balance = SUM, sin adjustment |
 | NFR-3 Seguridad | ✅ COVERED | Structural: client-side, 10MB, atomic | — |
 | NFR-4 No-regresión | ✅ COVERED | `pnpm test` + `pnpm tsc --noEmit` verdes | Tests existentes intactos |
 

@@ -14,11 +14,7 @@ los datos en la base local (sql.js + IndexedDB) reutilizando la lógica de mapeo
 `import-data-json`
 
 ### 1.3 Estado
-**Propuesto.** Sin implementar. Complementa el pivote `sqlite-local` (archivado) y el
-change `offline-first-ui` (v2). La migración automática de `sqlite-local` solo cubre
-el caso **localStorage presente en el mismo browser**; este change cubre el caso de un
-**archivo JSON exportado manualmente** (desde otro browser, otra máquina, o tras
-haber limpiado el localStorage), que hoy no tiene vía de recuperación.
+**Implementado y archivado (2026-09-14).** Acceptance verde en rama `feat/import-data-json` (7 commits): `pnpm tsc --noEmit` clean, 210/210 unit, 2/2 e2e import-json. Verdicto `sdd-verify`: **PASS** (17/17 tasks); los 2 WARNINGs resueltos (W1: enmienda NFR-2 sin `adjustment`, balance = `SUM`; W2: claves i18n `dailyMode`/`trackMode` en `c275dc7`). Artefactos completos en `docs/archive/`.
 
 ---
 
@@ -180,8 +176,8 @@ Claves nuevas (es/en), junto a `exportData`:
   `lastCheckedDay`) **nunca** se importa como autoridad (D3 de `sqlite-local`): se
   recalcula on-demand desde `budgets` + `transactions` vía `lib/cashflow.ts`.
 - El saldo de cuenta se deriva de `SUM(transactions.amount)`, no del campo `balance`
-  del archivo (D4 de `sqlite-local`). Si el archivo solo trae saldos sin historial,
-  se genera una transacción de tipo `adjustment` (misma estrategia que la migración).
+  del archivo (D4 de `sqlite-local`). Si el archivo solo trae saldos sin historial, el
+  saldo derivado queda en `0` (no se genera ninguna transacción de tipo `adjustment`).
 
 ### NFR-3: Seguridad e integridad
 - El archivo es texto procesado solo server-free / client-side: el parseo no evalúa

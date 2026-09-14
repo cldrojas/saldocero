@@ -77,8 +77,8 @@ config-form.tsx (click Importar datos)
   `3f8e4a12-...` en `MIGRATION_NAMESPACE`. `ON CONFLICT(id) DO NOTHING` → idempotente.
 - **NFR-2 — Estado derivado nunca se importa como autoridad**: `dailyAllowance`,
   `remainingToday`, `progress`, `lastCheckedDay` y `balance` del archivo se descartan; el
-  saldo se deriva de `SUM(transactions.amount)` (y `adjustment` si solo hay saldos), el
-  resto se recalcula vía `lib/cashflow.ts`. Mismo contract que D3/D4 de `sqlite-local`.
+  saldo se deriva de `SUM(transactions.amount)` (sin `adjustment`: si no hay movimientos, el
+  saldo derivado queda en `0`), el resto se recalcula vía `lib/cashflow.ts`. Mismo contract que D3/D4 de `sqlite-local`.
 - **Validación de shape estricta**: `type` de cuentas debe estar dentro del CHECK del
   schema (`daily`, `savings`, `investment`, `custom`, `expense`) para **fallar temprano**
   con error claro en lugar de SQL error a mitad de transacción.

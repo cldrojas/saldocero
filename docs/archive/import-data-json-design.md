@@ -1,7 +1,7 @@
 # Design: import-data-json
 
 **Change ID**: `import-data-json`
-**Estado**: En diseño — listo para `sdd-tasks`
+**Estado**: Implementado, verificado y archivado (2026-09-14).
 **Complementa**: pivote `sqlite-local` (archivado) y `offline-first-ui` (v2). La migración automática (`lib/migrate-localstorage.ts`) solo cubre el localStorage del mismo browser; este change añade el **import manual de un backup `data.json`** (formato legacy) para recuperar datos en cualquier dispositivo.
 
 ---
@@ -65,7 +65,7 @@ Default: `stableUuid('daily'|'savings'|'investment')` = `uuidv5('daily-budget-ac
 `applyJsonImport` trabaja sobre la DB singleton obtenida con `getDb()` (sin `setDb`: se muta la misma instancia) → backup/clear si aplica → `insertLegacyData(db, data)` → `saveToIndexedDB(db)` → retorna `{ accounts, transactions }`. El modal llama `onImported()` y el parent hace `await refresh()` + toast. Al no intercambiar la instancia se elimina la carrera de autosave por swap de singleton (riesgo que sí existía en `applyQrImport`).
 
 **D9 — i18n con claves fijas `import.*` (es/en).**
-Claves nuevas: `importData`, `importFile` (textarea/label del picker), `importPreviewTitle`, `importPreviewAccounts`, `importPreviewTransactions`, `importPreviewMode`, `importPreviewDateRange`, `importReplaceWarning`, `importConfirm`, `importSuccess`, `importErrorInvalidJson`, `importErrorInvalidShape`, `importErrorTooLarge`, `importErrorUnexpected`. `confirm`/`cancel`/`youSure`/`undoable` ya existen y se reutilizan. Prohibido interpolar contenido dinámico en `t()`; números/fechas se renderizan en el componente.
+Claves nuevas: `importData`, `importFile` (textarea/label del picker), `importPreviewTitle`, `importPreviewAccounts`, `importPreviewTransactions`, `importPreviewMode`, `importPreviewDateRange`, `importOverwriteWarning`, `importConfirm`, `importSuccess`, `importErrorInvalidJson`, `importErrorInvalidShape`, `importErrorTooLarge`, `importErrorUnexpected`. `confirm`/`cancel`/`youSure`/`undoable` ya existen y se reutilizan. Prohibido interpolar contenido dinámico en `t()`; números/fechas se renderizan en el componente.
 
 **D10 — Sin migración de schema.**
 Ningún cambio a SQLite → **no** se crea archivo en `docs/migrations/`. Rollback = revertir `lib/import-json.ts`, `import-json-modal.tsx`, el wiring de `config-form.tsx`, claves i18n y tests.
