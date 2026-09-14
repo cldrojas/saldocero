@@ -31,7 +31,7 @@ export type LocalStorageBudget = {
   startDate: string | null
   mode: 'daily' | 'track'
   autoSave: boolean
-  isSetup: boolean
+  isSetup?: boolean
 }
 
 export type LocalStorageTransaction = {
@@ -60,6 +60,20 @@ export type LegacyImportData = LocalStorageData
 export type LegacyImportAccount = LocalStorageAccount
 export type LegacyImportBudget = LocalStorageBudget
 export type LegacyImportTransaction = LocalStorageTransaction
+
+/**
+ * Deriva si un budget legacy pasó por setup. Un blob sin `isSetup` pero con
+ * `startAmount > 0` claramente fue configurado (regresión: export real del
+ * user omite isSetup); startAmount 0/falsy → device fresco. Si `isSetup`
+ * está presente, se respeta su valor explícito (sin regresión para fixtures
+ * con isSetup: true/false).
+ */
+export function isBudgetConfigured(budget: {
+  isSetup?: boolean
+  startAmount: number
+}): boolean {
+  return budget.isSetup ?? (budget.startAmount > 0)
+}
 
 /**
  * insertLegacyData - Núcleo de mapeo transaccional (pasos A–D) extraído de
@@ -197,7 +211,7 @@ export function insertLegacyData(db: Database, parsedData: LocalStorageData): vo
       budgetEndDate,
       budget.autoSave ? 1 : 0,
       budget.mode,
-      budget.isSetup ? 1 : 0,
+      isBudgetConfigured(budget) ? 1 : 0,
       new Date().toISOString()
     ])
     budgetStmt.free()

@@ -10,7 +10,7 @@ import type { Database } from 'sql.js'
 import { exportDb, getDb } from '@/lib/db/client'
 import { saveBackup, saveToIndexedDB } from '@/lib/db/persistence'
 import { clearData } from '@/lib/db/repository'
-import { insertLegacyData, MIGRATED_FLAG_KEY } from '@/lib/migrate-localstorage'
+import { insertLegacyData, isBudgetConfigured, MIGRATED_FLAG_KEY } from '@/lib/migrate-localstorage'
 import type { LegacyImportData } from '@/lib/migrate-localstorage'
 
 export const MAX_IMPORT_BYTES = 10 * 1024 * 1024 // 10 MB (D7)
@@ -119,7 +119,7 @@ export function buildImportPreview(data: LegacyImportData): ImportPreview {
     transactions: data.transactions.length,
     mode: data.budget.mode,
     dateRange: dateRange(data.transactions),
-    hasConfiguredBudget: data.budget.isSetup === true,
+    hasConfiguredBudget: isBudgetConfigured(data.budget),
   }
 }
 

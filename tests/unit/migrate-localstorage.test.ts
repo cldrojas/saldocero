@@ -146,6 +146,39 @@ describe('migrateFromLocalStorage (client sql.js → IndexedDB)', () => {
     })
   })
 
+  it('deriva is_setup=1 cuando el blob legacy omite isSetup pero tiene startAmount > 0', async () => {
+    const seed = legacySeed()
+    delete (seed.budget as { isSetup?: boolean }).isSetup
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed))
+
+    await migrateModule.migrateFromLocalStorage()
+
+    const db = await clientModule.getDb()
+    const stmt = db.prepare(`SELECT is_setup FROM budgets`)
+    stmt.step()
+    const budget = stmt.getAsObject() as { is_setup: number }
+    stmt.free()
+
+    expect(budget.is_setup).toBe(1)
+  })
+
+  it('deriva is_setup=0 cuando el blob legacy omite isSetup y startAmount es 0 (device fresco)', async () => {
+    const seed = legacySeed()
+    seed.budget.startAmount = 0
+    delete (seed.budget as { isSetup?: boolean }).isSetup
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seed))
+
+    await migrateModule.migrateFromLocalStorage()
+
+    const db = await clientModule.getDb()
+    const stmt = db.prepare(`SELECT is_setup FROM budgets`)
+    stmt.step()
+    const budget = stmt.getAsObject() as { is_setup: number }
+    stmt.free()
+
+    expect(budget.is_setup).toBe(0)
+  })
+
   it('es idempotente: re-ejecutar no duplica filas', async () => {
     await migrateModule.migrateFromLocalStorage()
     const afterFirst = {

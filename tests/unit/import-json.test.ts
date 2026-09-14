@@ -166,6 +166,16 @@ describe('buildImportPreview (4.1)', () => {
     }
     expect(buildImportPreview(noSetup).hasConfiguredBudget).toBe(false)
   })
+
+  it('sin isSetup pero startAmount > 0 → hasConfiguredBudget: true (blob legacy real)', () => {
+    const blob = {
+      ...legacySeed(),
+      budget: { ...legacySeed().budget },
+    }
+    delete (blob.budget as { isSetup?: boolean }).isSetup
+
+    expect(buildImportPreview(blob).hasConfiguredBudget).toBe(true)
+  })
 })
 
 // ─── 4.2 applyJsonImport con módulos mockeados ─────────────────
@@ -391,5 +401,20 @@ describe('Paridad D1 con migrateFromLocalStorage (4.3)', () => {
     expect(await selectCount('accounts')).toBe(3)
     expect(await selectCount('transactions')).toBe(4)
     expect(await selectCount('budgets')).toBe(1)
+  })
+
+  it('D1: blob sin isSetup pero startAmount > 0 → is_setup=1 en la fila budgets', async () => {
+    const blob = legacySeed()
+    delete (blob.budget as { isSetup?: boolean }).isSetup
+
+    await importModule.applyJsonImport(JSON.stringify(blob), { replace: false })
+
+    const db = await clientModule.getDb()
+    const stmt = db.prepare(`SELECT is_setup FROM budgets`)
+    stmt.step()
+    const budget = stmt.getAsObject() as { is_setup: number }
+    stmt.free()
+
+    expect(budget.is_setup).toBe(1)
   })
 })
