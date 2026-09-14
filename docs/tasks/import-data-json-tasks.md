@@ -21,11 +21,11 @@
 - [x] 3.4 `contexts/language-context.tsx`: claves `import.*` es/en (tabla FR-5/D9), claves fijas sin interpolación en `t()`; reutiliza `cancel/confirm/youSure/undoable`.
 
 ## Phase 4: Tests + gate
-- [ ] 4.1 `tests/unit/import-json.test.ts` (espejo de `migrate-localstorage.test.ts`): `readImportFile` too-large/invalid-json/invalid-shape; `validateImportJson` vacío/JSON array/type fuera del enum/derivados; `buildImportPreview` counts+rango.
-- [ ] 4.2 `applyJsonImport` con `getDb`/`clearData`/`saveToIndexedDB`/`exportDb` mockeados: path reemplazo (backup `pre-import-*` + clearData), DB vacía sin backup, shape inválido → throw sin efecto sobre db; flag `daily-budget-data-migrated` marcada; bypass: flag previa `'true'` no bloquea (D3).
-- [ ] 4.3 Paridad D1: mismo fixture legacy vía `applyJsonImport` = `migrateFromLocalStorage` (mismos UUIDs/ON CONFLICT); idempotencia: doble import no duplica filas.
-- [ ] 4.4 `tests/ui/import-json.spec.ts` (Playwright `:3100`, DB E2E aislada): picker `.json` → preview visible → confirmar → toast → budget/cuentas en UI → `page.reload()` persiste.
-- [ ] 4.5 Gate: `pnpm test` + `pnpm tsc --noEmit` verdes; suite de migración intacta; ausencia de `docs/migrations/import-data-json*` (NFR-1/D10).
+- [x] 4.1 `tests/unit/import-json.test.ts` (espejo de `migrate-localstorage.test.ts`): `readImportFile` too-large/invalid-json/invalid-shape; `validateImportJson` vacío/JSON array/type fuera del enum/derivados; `buildImportPreview` counts+rango.
+- [x] 4.2 `applyJsonImport` con `getDb`/`clearData`/`saveToIndexedDB`/`exportDb` mockeados: path reemplazo (backup `pre-import-*` + clearData), DB vacía sin backup, shape inválido → throw sin efecto sobre db; flag `daily-budget-data-migrated` marcada; bypass: flag previa `'true'` no bloquea (D3).
+- [x] 4.3 Paridad D1: mismo fixture legacy vía `applyJsonImport` = `migrateFromLocalStorage` (mismos UUIDs/ON CONFLICT); idempotencia: doble import no duplica filas.
+- [x] 4.4 `tests/ui/import-json.spec.ts` (Playwright `:3100`, DB E2E aislada): picker `.json` → preview visible → confirmar → toast → budget/cuentas en UI → `page.reload()` persiste.
+- [x] 4.5 Gate: `pnpm test` + `pnpm tsc --noEmit` verdes; suite de migración intacta; ausencia de `docs/migrations/import-data-json*` (NFR-1/D10).
 
 ---
 *Checklist SDD para `import-data-json`. Extracción (Phase 1) antes que librería (Phase 2); UI (Phase 3) depende de librería; tests (Phase 4) verifican FR-2/3/4. Sin archivo de migración (D10).*
