@@ -133,7 +133,7 @@ export default function ImportJsonModal({
     }
   }
 
-  const modeLabel = preview?.mode === 'daily' ? t('dailyMode') || 'Daily Mode' : t('trackMode') || 'Track Mode'
+  const modeLabel = preview?.mode === 'daily' ? t('dailyMode') : t('trackMode')
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
