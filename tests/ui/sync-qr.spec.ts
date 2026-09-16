@@ -161,7 +161,7 @@ async function setupExporter(page: Page): Promise<string> {
   await page.getByTestId('qr-export-button').click()
   const tokenEl = page.getByTestId('claim-token')
   await expect(tokenEl).toBeVisible()
-  const token = (await tokenEl.textContent())?.trim()
+  const token = (await tokenEl.inputValue()).trim()
   expect(token).toMatch(/^[0-9a-f-]{36}$/)
   return token!
 }
