@@ -7,6 +7,7 @@
 // Camera scanning is progressive enhancement over the manual path.
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
+import { Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -93,7 +94,9 @@ export function SyncQrModal({
   const [claim, setClaim] = useState<IssuedClaim | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
+  const [tokenCopied, setTokenCopied] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const tokenInputRef = useRef<HTMLInputElement | null>(null)
 
   // ---- import state ----
   const [tab, setTab] = useState<'camera' | 'manual'>('manual')
@@ -279,6 +282,27 @@ export function SyncQrModal({
     onOpenChange(false)
   }
 
+  async function copyClaimToken(): Promise<void> {
+    if (!claim) return
+    try {
+      await navigator.clipboard.writeText(claim.token)
+    } catch {
+      // Fallback para contextos sin API de clipboard (p.ej. HTTP no seguro):
+      // seleccionar el token y copiar vía execCommand.
+      tokenInputRef.current?.select()
+      let copied = false
+      try {
+        copied = document.execCommand('copy')
+      } catch {
+        copied = false
+      }
+      if (!copied) return
+    }
+    setTokenCopied(true)
+    toast({ title: t('sync.export.token_copied') })
+    window.setTimeout(() => setTokenCopied(false), 2000)
+  }
+
   function errorLabel(error: string): string {
     switch (error) {
       case 'expired':
@@ -336,13 +360,28 @@ export function SyncQrModal({
                   >
                     {t('sync.export.claim_token_label')}
                   </label>
-                  <p
-                    id="sync-claim-token"
-                    data-testid="claim-token"
-                    className="mt-1 select-all break-all rounded-md border bg-muted p-2 font-mono text-xs text-muted-foreground"
-                  >
-                    {claim.token}
-                  </p>
+                  <div className="mt-1 flex gap-2">
+                    <Input
+                      ref={tokenInputRef}
+                      id="sync-claim-token"
+                      data-testid="claim-token"
+                      value={claim.token}
+                      readOnly
+                      className="flex-1 font-mono text-xs"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => void copyClaimToken()}
+                      disabled={busy}
+                      aria-label={t('sync.export.copy_token')}
+                      data-testid="claim-token-copy-button"
+                    >
+                      {tokenCopied ? <Check className="text-green-600" /> : <Copy />}
+                    </Button>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button onClick={() => void handleDone()} disabled={busy}>
