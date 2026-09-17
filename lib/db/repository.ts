@@ -111,6 +111,7 @@ export function loadState(db: Database) {
     type: acc.type,
     balance: Math.floor(acc.balance ?? 0),
     icon: acc.icon,
+    hiden: acc.hidden
   }))
 
   // Transactions (most recent first)
