@@ -31,16 +31,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# kilocode
+# agents
+.atl
 .kilocode/
 
 # generated code for test context
 /test-results
 
 # SQLite database
-data/*.db
-data/*.db-wal
-data/*.db-shm
+data/
 
 # temp files
 tmp/
