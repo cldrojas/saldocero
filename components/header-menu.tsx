@@ -16,12 +16,12 @@ import { useLanguage, type Language, translations } from "@/contexts/language-co
 import { useCurrency, type Currency, currencies } from "@/contexts/currency-context"
 import { LanguageCurrencySelector } from "@/components/language-currency-selector"
 import { ConfigForm } from "@/components/config-form"
-import type { Budget } from "@/types"
+import type { Budget, Int } from "@/types"
 
 interface HeaderMenuProps {
   budget: Budget
   onUpdateConfig: (config: {
-    startAmount?: number
+    startAmount?: Int
     endDate?: Date | undefined
     mode?: "daily" | "track"
     autoSave?: boolean
@@ -34,17 +34,23 @@ type SheetView = "menu" | "settings"
 export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuProps) {
   const [open, setOpen] = useState(false)
   const [view, setView] = useState<SheetView>("menu")
-  const [mounted, setMounted] = useState(false)
   const { theme, setTheme, resolvedTheme } = useTheme()
   const { t, language, setLanguage } = useLanguage()
   const { currency, setCurrency } = useCurrency()
 
-  // SSR-safe: next-themes no resuelve el tema real (system) hasta el cliente.
-  // Renderizar el botón con el theme del server causaría hydration mismatch.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydration guard: must defer to client
-  useEffect(() => setMounted(true), [])
+  // Theme is unknown until mount: next-themes returns undefined on the server
+  // but the stored theme on the client's first render, so reading it for the
+  // icon/title diverges between SSR and hydration. Render the light state until
+  // mounted, then reconcile.
+  const [mounted, setMounted] = useState(false)
 
-  const isDarkMode = (theme || resolvedTheme) === "dark"
+  /* eslint-disable react-hooks/set-state-in-effect -- mounted flag keeps the theme toggle SSR/client-consistent until next-themes resolves after mount */
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const isDarkMode = mounted && (theme || resolvedTheme) === "dark"
 
   const handleOpenSettings = () => setView("settings")
   const handleBackToMenu = () => setView("menu")
@@ -63,19 +69,13 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
         <Button
           variant="ghost"
           size="icon"
-          data-testid="theme-toggle"
           onClick={() => setTheme(isDarkMode ? "light" : "dark")}
-          title={mounted ? (isDarkMode ? t("lightMode") : t("darkMode")) : undefined}
-          aria-label={mounted ? (isDarkMode ? t("lightMode") : t("darkMode")) : undefined}
+          title={isDarkMode ? t("lightMode") : t("darkMode")}
         >
-          {mounted ? (
-            isDarkMode ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )
-          ) : (
+          {isDarkMode ? (
             <Sun className="h-5 w-5" />
+          ) : (
+            <Moon className="h-5 w-5" />
           )}
         </Button>
       </div>
@@ -96,6 +96,8 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
                 </SheetHeader>
 
                 <nav className="flex flex-col px-6 pb-6" aria-label="Menu options">
+                  <Separator />
+
                   {/* Language */}
                   <div className="py-3">
                     <div className="flex items-center gap-3 mb-2">

@@ -8,7 +8,6 @@
 
 # next.js
 /.next/
-/.next-e2e/
 /out/
 
 # production
@@ -31,16 +30,16 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# kilocode
+# agents
 .kilocode/
+.atl/
 
 # generated code for test context
 /test-results
 
-# SQLite database
-data/*.db
-data/*.db-wal
-data/*.db-shm
+# supabase CLI local state
+supabase/.temp/
+tests/ui/.auth/
 
-# temp files
-tmp/
+# SQLite runtime generated
+data/

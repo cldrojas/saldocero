@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { TransactionModal } from '@/components/modals/transaction-modal'
 import { LanguageProvider } from '@/contexts/language-context'
 import { CurrencyProvider } from '@/contexts/currency-context'
-import { Account } from '@/types'
+import { Account, Int } from '@/types'
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
@@ -17,8 +17,8 @@ function renderWithProviders(ui: React.ReactElement) {
 
 describe('TransactionModal account selector', () => {
   const accounts: Account[] = [
-    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000, icon: 'wallet' },
-    { id: 'savings', name: 'Savings', type: 'savings', balance: 500, icon: 'piggybank' }
+    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' },
+    { id: 'savings', name: 'Savings', type: 'savings', balance: 500 as Int, icon: 'piggybank' }
   ]
 
   function renderModal() {
@@ -63,7 +63,7 @@ describe('TransactionModal account selector', () => {
         onClose={vi.fn()}
         onAddTransaction={vi.fn()}
         onUpdateTransaction={vi.fn()}
-        accounts={[{ id: 'daily', name: 'Daily Budget', type: 'daily', balance: -300, icon: 'wallet' }]}
+        accounts={[{ id: 'daily', name: 'Daily Budget', type: 'daily', balance: -300 as Int, icon: 'wallet' }]}
         remainingToday={5000}
       />
     )

@@ -170,12 +170,6 @@ export const translations = {
     missingInformationDescription: 'Please complete all fields',
     configUpdated: 'Budget Updated',
     configUpdatedDescription: 'Your settings were saved.',
-    noAccounts: 'No accounts available',
-    noAccountsDescription: 'Please add accounts before making transfers.',
-    insufficientAccounts: 'Need more accounts',
-    insufficientAccountsDescription: 'You need at least 2 accounts to make transfers.',
-    transferSuccess: 'Transfer Complete',
-    transferSuccessDescription: '{amount} moved successfully.',
 
     // Date picker
     pickDate: 'Pick a date',
@@ -204,43 +198,7 @@ export const translations = {
     authRateLimit: 'Too many attempts. Please try again in a moment.',
     authCheckEmail: 'Check your email to confirm your account, then sign in.',
     authSignOut: 'Sign Out',
-    authLoading: 'Loading...',
-
-    // Sync
-    syncSync: 'Sync',
-    syncSyncing: 'Syncing…',
-    syncSynced: 'Synced',
-    syncLastSync: 'Last sync: {time}',
-    syncError: 'Sync failed',
-    syncSettingsTitle: 'Sync settings',
-    
-    syncBackupsTitle: 'Local backups',
-    syncRestore: 'Restore',
-    syncRestored: 'Backup restored',
-    syncRestoreError: 'Could not restore backup. The snapshot may be corrupted.',
-    syncNoBackups: 'No backups yet',
-
-    // Sync QR
-    'sync.export.title': 'Share via QR',
-    'sync.export.countdown': 'Expires in {mm}:{ss}',
-    'sync.export.claim_token_label': 'Claim code (typeable)',
-    'sync.export.copy_token': 'Copy claim code',
-    'sync.export.token_copied': 'Claim code copied',
-    'sync.export.done': 'Done / Invalidate',
-    'sync.import.title': 'Scan QR or enter code',
-    'sync.import.camera_tab': 'Camera',
-    'sync.import.manual_tab': 'Enter code',
-    'sync.import.enter_token': 'Paste claim token here',
-    'sync.import.button': 'Import',
-    'sync.import.preview_title': 'Snapshot preview',
-    'sync.import.preview_date': 'Snapshot from {date}',
-    'sync.import.preview_hash': 'Hash: {shortHash}',
-    'sync.import.confirm': 'Confirm and import',
-    'sync.import.cancel': 'Cancel',
-    'sync.claim.error_expired': 'QR code expired (15 min). Generate a new one from the source device.',
-    'sync.claim.error_consumed': 'This QR code was already used. Generate a new one from the source device.',
-    'sync.claim.error_not_found': 'Claim code not found.',
-    'sync.claim.error_too_large': 'The snapshot exceeds the maximum QR size allowed.'
+    authLoading: 'Loading...'
   }, es: {
     // General
     appName: 'Saldo Cero',
@@ -404,12 +362,6 @@ export const translations = {
     missingInformationDescription: 'Completa todos los campos requeridos',
     configUpdated: 'Presupuesto actualizado',
     configUpdatedDescription: 'Los cambios se guardaron correctamente.',
-    noAccounts: 'Sin cuentas disponibles',
-    noAccountsDescription: 'Agrega cuentas antes de hacer transferencias.',
-    insufficientAccounts: 'Se necesitan al menos 2 cuentas',
-    insufficientAccountsDescription: 'Necesitas al menos 2 cuentas para transferir.',
-    transferSuccess: 'Transferencia completada',
-    transferSuccessDescription: '{amount} se transfirió correctamente.',
 
     // Date picker
     pickDate: 'Selecciona una fecha',
@@ -438,43 +390,7 @@ export const translations = {
     authRateLimit: 'Demasiados intentos. Inténtalo de nuevo en un momento.',
     authCheckEmail: 'Revisa tu correo para confirmar tu cuenta y luego inicia sesión.',
     authSignOut: 'Cerrar sesión',
-    authLoading: 'Cargando...',
-
-    // Sync
-    syncSync: 'Sincronizar',
-    syncSyncing: 'Sincronizando…',
-    syncSynced: 'Sincronizado',
-    syncLastSync: 'Última sincronización: {time}',
-    syncError: 'Error de sincronización',
-    syncSettingsTitle: 'Configuración de sincronización',
-    
-    syncBackupsTitle: 'Copias de seguridad locales',
-    syncRestore: 'Restaurar',
-    syncRestored: 'Copia restaurada',
-    syncRestoreError: 'No se pudo restaurar la copia. El snapshot puede estar corrupto.',
-    syncNoBackups: 'No hay copias todavía',
-
-    // Sync QR
-    'sync.export.title': 'Compartir vía QR',
-    'sync.export.countdown': 'Expira en {mm}:{ss}',
-    'sync.export.claim_token_label': 'Código de claim (tipable)',
-    'sync.export.copy_token': 'Copiar código de claim',
-    'sync.export.token_copied': 'Código de claim copiado',
-    'sync.export.done': 'Listo / Invalidar',
-    'sync.import.title': 'Escanear QR o ingresar código',
-    'sync.import.camera_tab': 'Cámara',
-    'sync.import.manual_tab': 'Ingresar código',
-    'sync.import.enter_token': 'Pega el claim token aquí',
-    'sync.import.button': 'Importar',
-    'sync.import.preview_title': 'Vista previa del snapshot',
-    'sync.import.preview_date': 'Snapshot del {date}',
-    'sync.import.preview_hash': 'Hash: {shortHash}',
-    'sync.import.confirm': 'Confirmar e importar',
-    'sync.import.cancel': 'Cancelar',
-    'sync.claim.error_expired': 'El código QR ha expirado (15 min). Genera uno nuevo desde el dispositivo origen.',
-    'sync.claim.error_consumed': 'Este código QR ya fue usado. Genera uno nuevo desde el dispositivo origen.',
-    'sync.claim.error_not_found': 'Código de claim no encontrado.',
-    'sync.claim.error_too_large': 'El snapshot supera el tamaño máximo permitido para QR.'
+    authLoading: 'Cargando...'
   }
 }
 
@@ -489,29 +405,38 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 // Create the provider
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // SSR-safe: el primer render SIEMPRE es 'es' (server y client idénticos).
-  // Leer localStorage/navigator aquí rompería la hidratación (server no tiene
-  // acceso a ellos y renderizaría 'es' mientras el cliente elegiría 'en').
+  // Deterministic default so the first render is identical on server and client.
+  // The persisted/browser language is hydrated after mount; reading localStorage
+  // during the useState initializer caused SSR/client hydration mismatches.
   const [language, setLanguage] = useState<Language>('es')
+  const [hydrated, setHydrated] = useState(false)
 
-  // Detección post-mount: localStorage > navigator.language > 'es'.
+  // Hydrate persisted/browser language after mount. Effect (not a lazy
+  // initializer) is intentional: localStorage is client-only, so this must not
+  // run during SSR prerender, and hydrating post-mount avoids hydration mismatches.
+  /* eslint-disable react-hooks/set-state-in-effect -- client-only persisted hydration */
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Check localStorage first
     const stored = localStorage.getItem('language')
     if (stored === 'en' || stored === 'es') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration: detect browser prefs post-mount
-      setLanguage(stored)
-      return
+      setLanguage(stored as Language)
+    } else {
+      // Fallback to browser language
+      const browserLang = navigator.language.split('-')[0].toLowerCase()
+      if (browserLang === 'en' || browserLang === 'es') setLanguage(browserLang as Language)
     }
-    const browserLang = navigator.language.split('-')[0].toLowerCase()
-    if (browserLang === 'en' || browserLang === 'es') {
-      setLanguage(browserLang as Language)
-    }
+    setHydrated(true)
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Effect to save language changes to localStorage
+  // Effect to save language changes to localStorage. Guarded on hydration so the
+  // deterministic 'es' default is never persisted over a previously stored value.
   useEffect(() => {
+    if (!hydrated) return
     localStorage.setItem('language', language)
-  }, [language])
+  }, [language, hydrated])
 
   // Function to get translation
   const t = (key: string, params?: Record<string, string | number>) => {
