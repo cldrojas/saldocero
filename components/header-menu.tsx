@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Menu, Sun, Moon, Globe, CreditCard, Settings, ArrowLeft } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -38,7 +38,19 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
   const { t, language, setLanguage } = useLanguage()
   const { currency, setCurrency } = useCurrency()
 
-  const isDarkMode = (theme || resolvedTheme) === "dark"
+  // Theme is unknown until mount: next-themes returns undefined on the server
+  // but the stored theme on the client's first render, so reading it for the
+  // icon/title diverges between SSR and hydration. Render the light state until
+  // mounted, then reconcile.
+  const [mounted, setMounted] = useState(false)
+
+  /* eslint-disable react-hooks/set-state-in-effect -- mounted flag keeps the theme toggle SSR/client-consistent until next-themes resolves after mount */
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const isDarkMode = mounted && (theme || resolvedTheme) === "dark"
 
   const handleOpenSettings = () => setView("settings")
   const handleBackToMenu = () => setView("menu")

@@ -369,27 +369,38 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 // Create the provider
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // Get initial language from localStorage or browser language
-  const getInitialLanguage = (): Language => {
-    if (typeof window === 'undefined') return 'es' // SSR default
+  // Deterministic default so the first render is identical on server and client.
+  // The persisted/browser language is hydrated after mount; reading localStorage
+  // during the useState initializer caused SSR/client hydration mismatches.
+  const [language, setLanguage] = useState<Language>('es')
+  const [hydrated, setHydrated] = useState(false)
+
+  // Hydrate persisted/browser language after mount. Effect (not a lazy
+  // initializer) is intentional: localStorage is client-only, so this must not
+  // run during SSR prerender, and hydrating post-mount avoids hydration mismatches.
+  /* eslint-disable react-hooks/set-state-in-effect -- client-only persisted hydration */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
 
     // Check localStorage first
     const stored = localStorage.getItem('language')
-    if (stored === 'en' || stored === 'es') return stored as Language
+    if (stored === 'en' || stored === 'es') {
+      setLanguage(stored as Language)
+    } else {
+      // Fallback to browser language
+      const browserLang = navigator.language.split('-')[0].toLowerCase()
+      if (browserLang === 'en' || browserLang === 'es') setLanguage(browserLang as Language)
+    }
+    setHydrated(true)
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-    // Fallback to browser language
-    const browserLang = navigator.language.split('-')[0].toLowerCase()
-    if (browserLang === 'en' || browserLang === 'es') return browserLang as Language
-
-    return 'es' // Final fallback
-  }
-
-  const [language, setLanguage] = useState<Language>(getInitialLanguage)
-
-  // Effect to save language changes to localStorage
+  // Effect to save language changes to localStorage. Guarded on hydration so the
+  // deterministic 'es' default is never persisted over a previously stored value.
   useEffect(() => {
+    if (!hydrated) return
     localStorage.setItem('language', language)
-  }, [language])
+  }, [language, hydrated])
 
   // Function to get translation
   const t = (key: string, params?: Record<string, string | number>) => {

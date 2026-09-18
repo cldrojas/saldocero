@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CircularProgress } from '@/components/circular-progress'
 import {
@@ -60,9 +60,18 @@ export function DailyBudgetStatus({
   const isTrackMode = budget.mode === 'track' || (!budget.mode && !budget.endDate)
 
   // Which balance to display in track mode: a specific account id, or the total across all accounts.
-  const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    () => window.localStorage.getItem(SELECTED_BALANCE_ACCOUNT_KEY) || TOTAL_ACCOUNTS_VALUE
-  )
+  // Deterministic default on first render; the persisted selection is hydrated after mount.
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(TOTAL_ACCOUNTS_VALUE)
+
+  // Hydrate persisted selection after mount. Effect (not a lazy initializer) is
+  // intentional: the lazy initializer read window.localStorage during render,
+  // the same latent SSR/client crash class as b759898.
+  /* eslint-disable react-hooks/set-state-in-effect -- client-only persisted hydration */
+  useEffect(() => {
+    const stored = window.localStorage.getItem(SELECTED_BALANCE_ACCOUNT_KEY)
+    if (stored) setSelectedAccountId(stored)
+  }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSelectedAccountChange = (value: string) => {
     setSelectedAccountId(value)

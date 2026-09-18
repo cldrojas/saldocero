@@ -71,10 +71,11 @@ describe('DailyBudgetStatus hidden accounts', () => {
     expect(screen.getByText(/3\.000/)).toBeInTheDocument()
   })
 
-  it('shows a specific visible account balance when selected', () => {
+  it('shows a specific visible account balance when selected', async () => {
     window.localStorage.setItem('dailyBudget:selectedBalanceAccount', 'daily')
     renderWithProviders()
 
-    expect(screen.getByText(/1\.000/)).toBeInTheDocument()
+    // First render is deterministic (total); the persisted selection appears after mount
+    expect(await screen.findByText(/1\.000/)).toBeInTheDocument()
   })
 })
