@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { TransactionModal } from '@/components/modals/transaction-modal'
 import { LanguageProvider } from '@/contexts/language-context'
 import { CurrencyProvider } from '@/contexts/currency-context'
-import { Account } from '@/types'
+import { Account, Int } from '@/types'
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(
@@ -17,8 +17,8 @@ function renderWithProviders(ui: React.ReactElement) {
 
 describe('TransactionModal account selector', () => {
   const accounts: Account[] = [
-    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000, icon: 'wallet' },
-    { id: 'savings', name: 'Savings', type: 'savings', balance: 500, icon: 'piggybank' }
+    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' },
+    { id: 'savings', name: 'Savings', type: 'savings', balance: 500 as Int, icon: 'piggybank' }
   ]
 
   function renderModal() {
@@ -63,7 +63,7 @@ describe('TransactionModal account selector', () => {
         onClose={vi.fn()}
         onAddTransaction={vi.fn()}
         onUpdateTransaction={vi.fn()}
-        accounts={[{ id: 'daily', name: 'Daily Budget', type: 'daily', balance: -300, icon: 'wallet' }]}
+        accounts={[{ id: 'daily', name: 'Daily Budget', type: 'daily', balance: -300 as Int, icon: 'wallet' }]}
         remainingToday={5000}
       />
     )
@@ -74,5 +74,43 @@ describe('TransactionModal account selector', () => {
     const balance = option.querySelector('span.tabular-nums')
     expect(balance).toHaveTextContent('$-300')
     expect(balance).toHaveClass('text-red-600')
+  })
+})
+
+describe('TransactionModal quick amount chips', () => {
+  const accounts: Account[] = [
+    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' }
+  ]
+
+  function renderModal() {
+    return renderWithProviders(
+      <TransactionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onAddTransaction={vi.fn()}
+        onUpdateTransaction={vi.fn()}
+        accounts={accounts}
+        remainingToday={5000}
+      />
+    )
+  }
+
+  it('renders the quick amount chips with es-AR formatted labels', () => {
+    renderModal()
+
+    for (const label of ['1.000', '2.000', '5.000', '10.000']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+  })
+
+  it('sets the amount input when a chip is clicked and highlights the active chip', async () => {
+    const user = userEvent.setup()
+    renderModal()
+
+    const chip = screen.getByRole('button', { name: '5.000' })
+    await user.click(chip)
+
+    expect(screen.getByRole('spinbutton')).toHaveValue(5000)
+    expect(chip).toHaveClass('border-primary')
   })
 })

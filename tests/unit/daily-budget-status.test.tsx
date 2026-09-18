@@ -4,10 +4,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { DailyBudgetStatus } from '@/components/daily-budget-status'
 import { LanguageProvider } from '@/contexts/language-context'
 import { CurrencyProvider } from '@/contexts/currency-context'
-import { Account, Budget } from '@/types'
+import { Account, Budget, Int } from '@/types'
 
 const trackBudget: Budget = {
-  startAmount: 0,
+  startAmount: 0 as Int,
   startDate: new Date(),
   endDate: undefined,
   autoSave: false,
@@ -15,9 +15,9 @@ const trackBudget: Budget = {
 }
 
 const accounts: Account[] = [
-  { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000, icon: 'wallet' },
-  { id: 'savings', name: 'Savings', type: 'savings', balance: 500, icon: 'piggybank', hidden: true },
-  { id: 'investment', name: 'Investment', type: 'investment', balance: 2000, icon: 'trending' }
+  { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' },
+  { id: 'savings', name: 'Savings', type: 'savings', balance: 500 as Int, icon: 'piggybank', hidden: true },
+  { id: 'investment', name: 'Investment', type: 'investment', balance: 2000 as Int, icon: 'trending' }
 ]
 
 function renderWithProviders() {
@@ -57,7 +57,7 @@ describe('DailyBudgetStatus hidden accounts', () => {
     const options = screen.getAllByRole('option')
     const labels = options.map((option) => option.textContent)
 
-    expect(labels).toContain('All accounts')
+    expect(labels).toContain('Total Budget')
     expect(labels).toContain('Daily Budget')
     expect(labels).toContain('Investment')
     expect(labels).not.toContain('Savings')
@@ -71,10 +71,11 @@ describe('DailyBudgetStatus hidden accounts', () => {
     expect(screen.getByText(/3\.000/)).toBeInTheDocument()
   })
 
-  it('shows a specific visible account balance when selected', () => {
+  it('shows a specific visible account balance when selected', async () => {
     window.localStorage.setItem('dailyBudget:selectedBalanceAccount', 'daily')
     renderWithProviders()
 
-    expect(screen.getByText(/1\.000/)).toBeInTheDocument()
+    // First render is deterministic (total); the persisted selection appears after mount
+    expect(await screen.findByText(/1\.000/)).toBeInTheDocument()
   })
 })

@@ -1,21 +1,20 @@
 // tests/ui/import-json.spec.ts
-// Spec E2E (task 4.4) de `import-data-json`: flujo completo de importación de
-// un data.json desde la configuración (Sheet móvil) → preview → confirmación
-// de reemplazo (FR-3) → toast → persistencia tras reload (IndexedDB).
+// Spec E2E de `import-data-json` (era localStorage): flujo completo de
+// importación del export legacy (`daily-budget-export.json`) desde la
+// configuración → preview → confirmación de reemplazo → toast → persistencia
+// tras reload.
 //
-// Mismo patrón que daily-flow.spec.ts: la app es 100% client-side (sql.js WASM
-// + IndexedDB en el browser), así que el estado se prepara SIEMPRE vía la UI
-// real (SetupForm real + DatePicker de shadcn). El archivo de importación se
-// entrega como buffer inline con el shape del blob legacy de localStorage
-// (FR-2: idéntico al que produce la migración), con cuenta oculta incluida.
+// Port de e6f944a:tests/ui/import-json.spec.ts al flujo actual: el estado se
+// prepara con los helpers de la era (setupTestAppState vía localStorage, sin
+// setup por UI) y el import persiste en `localStorage['daily-budget-data']`.
 import { test, expect, type Page } from '@playwright/test'
 import { waitForAppReady } from './test-utils'
 
 // ─── Fixture ───────────────────────────────────────────────
 
-// Shape canónico de data.json (FR-2/FR-4): budget + accounts + transactions.
-// Idéntico en estructura al blob legacy de localStorage (legacySeed de
-// migrate-localstorage.test.ts); la cuenta 'Viajes' está oculta (hidden).
+// Shape canónico del export legacy (FR-2): budget + accounts + transactions,
+// idéntico al blob de `daily-budget-data`. La cuenta 'Viajes' está oculta
+// (hidden).
 const IMPORT_JSON = {
   budget: {
     startAmount: 50000,
@@ -44,7 +43,23 @@ function importJsonBuffer(): Buffer {
 
 // ─── Helpers ───────────────────────────────────────────────
 
-/** Setup inicial del presupuesto vía la UI real (mismo patrón que daily-flow). */
+/**
+ * Pinta el idioma ES (localStorage['language']) antes de que la app hidrate:
+ * el headless chromium resuelve navigator.language → 'en' y rompería los
+ * selectores en español. Se registra ANTES de ensureConfiguredState para que el
+ * reload aplique ambos init scripts.
+ */
+async function seedSpanishLanguage(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('language', 'es')
+  })
+}
+
+/**
+ * Setup inicial del presupuesto vía la UI real (mismo patrón que el reference
+ * e6f944a). NO usar init scripts para sembrar `daily-budget-data`: se re-aplican
+ * en cada navigation y pisarían el import en el reload de persistencia.
+ */
 async function setupViaUI(page: Page): Promise<void> {
   await page.goto('/')
   await expect(
@@ -56,12 +71,12 @@ async function setupViaUI(page: Page): Promise<void> {
   await page.locator('[role="gridcell"]:not([disabled])').last().click()
   await page.getByRole('button', { name: 'Comenzar ahora' }).click()
 
-  await expect(page.getByTitle('Agregar gasto')).toBeVisible()
+  await expect(page.getByText('Presupuesto Diario', { exact: true })).toBeVisible()
 }
 
 /**
  * Abre la configuración desde el menú móvil (ConfigForm vive en el Sheet del
- * HeaderMenu, solo visible en móvil) y devuelve el dialog de la configuración.
+ * HeaderMenu) y devuelve el dialog de la configuración.
  */
 async function openConfigSheet(page: Page) {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -70,7 +85,7 @@ async function openConfigSheet(page: Page) {
   await expect(page.getByRole('dialog')).toBeVisible()
 
   // Primer 'Configuración de presupuesto': navegación a settings;
-  // segundo: CollapsibleTrigger del formulario (mismo patrón que daily-flow).
+  // segundo: CollapsibleTrigger del formulario.
   const configButtons = page.getByRole('button', {
     name: 'Configuración de presupuesto',
   })
@@ -86,7 +101,8 @@ async function openConfigSheet(page: Page) {
 
 // ─── Tests ─────────────────────────────────────────────────
 
-test('importa data.json: preview → reemplazo → toast → persistencia', async ({ page }) => {
+test('importa el export legacy: preview → reemplazo → toast → persistencia', async ({ page }) => {
+  await seedSpanishLanguage(page)
   await setupViaUI(page)
 
   const configDialog = await openConfigSheet(page)
@@ -95,16 +111,16 @@ test('importa data.json: preview → reemplazo → toast → persistencia', asyn
   const importDialog = page.getByRole('dialog', { name: 'Importar desde archivo' })
   await expect(importDialog).toBeVisible()
 
-  // Elegir el archivo: como el setup ya creó datos, el import implica reemplazo
-  // (FR-3) → preview con contadores y advertencia de reemplazo.
+  // Elegir el archivo: como el estado ya tiene cuentas (setup previo), el
+  // import implica reemplazo (FR-3) → preview con contadores y advertencia.
   await page.getByTestId('import-file-input').setInputFiles({
-    name: 'data.json',
+    name: 'daily-budget-export.json',
     mimeType: 'application/json',
     buffer: importJsonBuffer(),
   })
 
   const preview = page.getByTestId('import-preview')
-  await expect(preview).toContainText('data.json')
+  await expect(preview).toContainText('daily-budget-export.json')
   await expect(preview).toContainText('Cuentas: 3')
   await expect(preview).toContainText('Transacciones: 4')
   await expect(preview).toContainText('2026-08-01 — 2026-08-10')
@@ -126,8 +142,8 @@ test('importa data.json: preview → reemplazo → toast → persistencia', asyn
   ).toBeVisible()
   await expect(importDialog).not.toBeVisible()
 
-  // Persistencia (IndexedDB): tras recargar con layout desktop, la app arranca
-  // con los datos importados y las cuentas reemplazan a las del setup.
+  // Persistencia (localStorage): tras recargar, la app arranca con los datos
+  // importados y las cuentas reemplazan a las del setup.
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.reload()
   await waitForAppReady(page)
@@ -140,6 +156,7 @@ test('importa data.json: preview → reemplazo → toast → persistencia', asyn
 })
 
 test('archivo no válido: muestra el error sin abrir la confirmación', async ({ page }) => {
+  await seedSpanishLanguage(page)
   await setupViaUI(page)
 
   const configDialog = await openConfigSheet(page)

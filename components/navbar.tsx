@@ -9,7 +9,7 @@ import { TransferModal } from './modals/transfer-modal'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Button } from '@/components/ui/button'
 import { ArrowRightLeft, HistoryIcon, Plus, WalletIcon } from 'lucide-react'
-import { Account, Budget, Transaction } from '@/types'
+import { Account, Budget, Transaction, Int } from '@/types'
 import { useLanguage } from '@/contexts/language-context'
 
 interface NavbarProps {
@@ -23,7 +23,7 @@ interface NavbarProps {
   updateTransaction: (transaction: Transaction) => void
   removeTransaction: (transactionId: string, refund?: boolean) => void
   transferFunds: (transfer: {
-    amount: number
+    amount: Int
     fromAccount: string
     toAccount: string
     description?: string
@@ -108,6 +108,7 @@ export default function Navbar({
           <ErrorBoundary>
             <AccountsList
               accounts={accounts}
+              budget={budget}
               onAddAccount={addAccount}
               onUpdateAccount={updateAccount}
               onDeleteAccount={deleteAccount}
