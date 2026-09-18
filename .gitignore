@@ -37,8 +37,7 @@ next-env.d.ts
 # generated code for test context
 /test-results
 
-# supabase CLI local state
-supabase/.temp/
+# test auth state
 tests/ui/.auth/
 
 # SQLite runtime generated
