@@ -13,6 +13,7 @@ import { useLanguage } from "@/contexts/language-context"
 import { toInt, type Budget, type Int } from "@/types"
 import ConfirmDialog from "@/components/modals/confirm-dialog"
 import ImportJsonModal from "@/components/modals/import-json-modal"
+import SyncQrModal from "@/components/sync/sync-qr-modal"
 import { Checkbox } from "./ui/checkbox"
 import { useBudget } from "@/hooks/use-budget"
 
@@ -29,6 +30,7 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
   const { setLastCheckedDay } = useBudget()
   const [isOpen, setIsOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [syncQrMode, setSyncQrMode] = useState<'export' | 'import' | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDeleteDateConfirm, setShowDeleteDateConfirm] = useState(false)
   const [autoSave, setAutoSave] = useState(budget.autoSave)
@@ -114,7 +116,7 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-4">
-              <div className="flex justify-between mb-4">
+              <div className="flex flex-wrap justify-between gap-2 mb-4">
                 <Button
                   type="button"
                   variant="secondary"
@@ -142,6 +144,22 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
                   data-testid="import-data-button"
                 >
                   {t("importData")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSyncQrMode('export')}
+                  data-testid="qr-export-button"
+                >
+                  {t('sync.export.title')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSyncQrMode('import')}
+                  data-testid="qr-import-button"
+                >
+                  {t('sync.import.title')}
                 </Button>
               </div>
               <div className="space-y-2">
@@ -255,6 +273,14 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImported={handleImported}
+      />
+      <SyncQrModal
+        key={syncQrMode ?? 'closed'}
+        open={syncQrMode !== null}
+        mode={syncQrMode ?? 'export'}
+        onOpenChange={(open) => {
+          if (!open) setSyncQrMode(null)
+        }}
       />
     </>
   )
