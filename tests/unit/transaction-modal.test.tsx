@@ -76,3 +76,41 @@ describe('TransactionModal account selector', () => {
     expect(balance).toHaveClass('text-red-600')
   })
 })
+
+describe('TransactionModal quick amount chips', () => {
+  const accounts: Account[] = [
+    { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 1000 as Int, icon: 'wallet' }
+  ]
+
+  function renderModal() {
+    return renderWithProviders(
+      <TransactionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onAddTransaction={vi.fn()}
+        onUpdateTransaction={vi.fn()}
+        accounts={accounts}
+        remainingToday={5000}
+      />
+    )
+  }
+
+  it('renders the quick amount chips with es-AR formatted labels', () => {
+    renderModal()
+
+    for (const label of ['1.000', '2.000', '5.000', '10.000']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+  })
+
+  it('sets the amount input when a chip is clicked and highlights the active chip', async () => {
+    const user = userEvent.setup()
+    renderModal()
+
+    const chip = screen.getByRole('button', { name: '5.000' })
+    await user.click(chip)
+
+    expect(screen.getByRole('spinbutton')).toHaveValue(5000)
+    expect(chip).toHaveClass('border-primary')
+  })
+})
