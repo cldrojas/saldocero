@@ -190,6 +190,22 @@ export function TransactionModal({
                 {t('expenseExceedsWarning')}
               </p>
             )}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {[1000, 2000, 5000, 10000].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAmount(value)}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                    amount === value
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-input hover:bg-accent hover:text-accent-foreground'
+                  }`}
+                >
+                  {value.toLocaleString('es-CL')}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">
