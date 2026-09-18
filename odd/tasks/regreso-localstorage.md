@@ -28,8 +28,11 @@ progresivamente.
 - [x] T1 — Crear rama de respaldo `backup/offline-first` en HEAD actual (`e3e1c51`)
 - [x] T2 — Reset `main` a `b8760e6` (preservando cambios tooling `.atl/` vía stash)
 - [x] T3 — Crear rama de trabajo `feat/regreso-localstorage`
-- [~] T4 — `pnpm install` + gates: vitest 88/88 ✓, tsc ✓; `next build` BLOQUEADO por /login (era Supabase #40) sin env vars — decisión con usuario
-- [ ] T5+ — Re-add progresivo de features (a definir con el usuario)
+- [x] T4 — `pnpm install` + gates: vitest 88/88 ✓, tsc ✓ (build pendía de decisión auth — resuelta en T5)
+- [x] T5 — Quitar auth Supabase del base (login, auth-context, lib/supabase, proxy.ts, tests, deps) → build verde ✓ (commit `2f20cbe`)
+- [x] T6 — Fix de hydration mismatches del base (patrón effect-hydration + mounted; refs `b759898`, `1662616`, memoria #457) → commit `8482ab0`
+- [x] T7 — Re-agregar import de datos JSON (port de `e6f944a`/`feat/import-data-json` al base localStorage: validación reutilizable tal cual, apply → escribe `localStorage['daily-budget-data']` + estado inmediato, modal + botón en config-form, i18n es/en, tests unitarios) → commit `9986422` (en esta rama reescrito como `2245abc`)
+- [x] T8 — Chips de selección rápida en modal de transacciones (port de `9bb1316`: 1000/2000/5000/10000, chip activo resaltado) → commit `a1877aa`
 
 ## Criterios de aceptación
 - `main` y la rama de trabajo quedan en `b8760e6`: la app usa `localStorage['daily-budget-data']`.
@@ -43,5 +46,10 @@ progresivamente.
 - Base ya incluye: modos daily/track, ingresos, ajustes, export, selector de balance, historial ordenado, menú responsive.
 
 ## Progreso
-- 2026-09-17: T1–T3 ejecutados. `main` y `feat/regreso-localstorage` en `b8760e6`; `backup/offline-first` en `e3e1c51`. `pnpm install` ok. Gates vitest 88/88 + tsc verdes. Build falla solo en /login (era Supabase #40) por falta de env vars — en la era original el build requería credenciales Supabase; decisión pendiente: quitar auth Supabase del base (build verde, app 100% local sin login) o dejarlo tal cual la era.
-- Commits de tracking: `docs(odd): plan de regreso a localStorage (b8760e6)`
+- 2026-09-17: T1–T6 ejecutados. `main` y `feat/regreso-localstorage` en `b8760e6`+3; `backup/offline-first` en `e3e1c51`. Gates verdes: vitest 68/68, tsc, eslint 0 errores, `next build` OK.
+- Commits: `b18733d` docs(odd) · `2f20cbe` refactor(auth) · `8482ab0` fix(hydration) · `9986422` feat(import) — import JSON portado de `e6f944a` (sin sql.js): `lib/import-json.ts` + `components/modals/import-json-modal.tsx` + `use-budget.replaceAll` (aditivo) + 19 tests unit + 2 E2E. Gates verdes: vitest 87/87, tsc, eslint 0 errores, build OK. En esta rama el import quedó reescrito como `2245abc` y `33eab4c` integró origin/main manteniendo el rewind (.gitignore ahora cubre `.atl/` y `data/`).
+- 2026-09-17: T8 chips STAGED (sin commit). Port exacto de `9bb1316` (montos 1.000/2.000/5.000/10.000 es-AR, chip activo `border-primary`) + 2 tests unit. Gates verdes: vitest 89/89, tsc exit 0.
+- 2026-09-18: T8 commiteado → `a1877aa` (hook pre-commit: vitest 89/89 ✓). Sin push (decisión del usuario).
+- Delivery: rama pusheada a origin; issue #64 (`status:approved`); PR #65 (https://github.com/cldrojas/saldocero/pull/65) para Vercel preview. PR reporta CONFLICTING en merge: esperado — el merge normal no revierte la pila offline-first; el rewind de main requiere reset/fast-forward (decisión del usuario).
+- Nota E2E conocida: `tests/ui/config-form.spec.ts` falla 9/9 pre-existente (busca el botón de configuración visible en desktop; en esta era el ConfigForm vive en el Sheet mobile). Fuera de CI (tests.yml corre tsc + vitest).
+- Nota: `supabase/` (migraciones SQL del CLI) quedó en el repo — no es código de build; decisión pendiente si se quiere fuera.
