@@ -30,8 +30,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# kilocode
+# agents
 .kilocode/
+.atl/
 
 # generated code for test context
 /test-results
@@ -39,3 +40,6 @@ next-env.d.ts
 # supabase CLI local state
 supabase/.temp/
 tests/ui/.auth/
+
+# SQLite runtime generated
+data/

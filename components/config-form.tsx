@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useLanguage } from "@/contexts/language-context"
 import { toInt, type Budget, type Int } from "@/types"
 import ConfirmDialog from "@/components/modals/confirm-dialog"
+import ImportJsonModal from "@/components/modals/import-json-modal"
 import { Checkbox } from "./ui/checkbox"
 import { useBudget } from "@/hooks/use-budget"
 
@@ -27,6 +28,7 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
   const { toast } = useToast()
   const { setLastCheckedDay } = useBudget()
   const [isOpen, setIsOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [showDeleteDateConfirm, setShowDeleteDateConfirm] = useState(false)
   const [autoSave, setAutoSave] = useState(budget.autoSave)
@@ -38,6 +40,12 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
     const yesterday = new Date()
     yesterday.setDate(yesterday.getDate() - 1)
     return yesterday
+  }
+
+  // El modal ya aplicó el import (replaceAll persistió en localStorage y
+  // actualizó su instancia de useBudget al instante); acá solo el toast.
+  function handleImported(): void {
+    toast({ title: t('importSuccess') })
   }
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -90,7 +98,8 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
   }
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
+    <>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full">
       <CollapsibleTrigger asChild>
         <Button variant="outline" className="flex items-center justify-between w-full">
           <span>{t("budgetConfiguration")}</span>
@@ -125,6 +134,14 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
                   }}
                 >
                   {t("exportData")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setImportOpen(true)}
+                  data-testid="import-data-button"
+                >
+                  {t("importData")}
                 </Button>
               </div>
               <div className="space-y-2">
@@ -233,6 +250,12 @@ export function ConfigForm({ budget, onUpdateConfig, onClearData }: {
           </form>
         </Card>
       </CollapsibleContent>
-    </Collapsible>
+      </Collapsible>
+      <ImportJsonModal
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={handleImported}
+      />
+    </>
   )
 }

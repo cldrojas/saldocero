@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { differenceInDays, startOfDay, isSameDay, isToday } from 'date-fns'
 import { v4 as uuidv4 } from 'uuid'
 import { Account, Budget, Int, toInt, Transaction, TransactionType } from '@/types'
+import { computeDailyMetrics } from '@/lib/daily-metrics'
+import type { LegacyImportData } from '@/lib/import-json'
 
 // This would be replaced with actual KV database calls
 const LOCAL_STORAGE_KEY = 'daily-budget-data'
@@ -719,6 +721,93 @@ export function useBudget() {
     }
   }
 
+  // Import JSON legacy: reemplaza TODO el estado con los datos del archivo
+  // (export de config-form / blob de `daily-budget-data`). Aditiva: no toca la
+  // lógica de load/hydration ni el save effect. Normaliza fechas/ids, RECOMPUTA
+  // los campos derivados vía helpers puros (no los traídos en el import),
+  // persiste el blob EXACTO que el save effect escribiría y setea los estados
+  // de React al instante (sin reload). isSetup: true — un import siempre
+  // configura la app.
+  const replaceAll = (data: LegacyImportData) => {
+    const importedBudget = data.budget
+
+    // Fechas: el archivo las trae como strings (JSON.stringify del hook); el
+    // estado las necesita como Date y el save effect las vuelve a serializar.
+    const parsedStartDate = importedBudget.startDate
+      ? new Date(importedBudget.startDate)
+      : undefined
+    const parsedEndDate = importedBudget.endDate ? new Date(importedBudget.endDate) : undefined
+
+    const nextBudget: Budget = {
+      startAmount: toInt(importedBudget.startAmount) ?? 0 as Int,
+      startDate: parsedStartDate,
+      endDate: parsedEndDate,
+      autoSave: importedBudget.autoSave ?? true,
+      mode: importedBudget.mode,
+    }
+
+    // Cuentas: id/icon opcionales en el archivo → mismo default que addAccount.
+    const nextAccounts: Account[] = data.accounts.map((acc) => ({
+      id: acc.id || acc.name.toLowerCase().replace(/\s+/g, '-'),
+      name: acc.name,
+      type: acc.type,
+      balance: toInt(acc.balance) ?? 0 as Int,
+      icon: acc.icon || 'wallet',
+      ...(acc.hidden !== undefined ? { hidden: acc.hidden } : {}),
+    }))
+
+    const nextTransactions: Transaction[] = data.transactions.map((tx) => {
+      const rawDate = tx.date ? new Date(tx.date) : today
+      return {
+        id: tx.id || uuidv4(),
+        type: tx.type as TransactionType,
+        amount: toInt(tx.amount) ?? 0 as Int,
+        description: tx.description ?? '',
+        account: tx.account,
+        date: Number.isNaN(rawDate.getTime()) ? today : rawDate,
+      }
+    })
+
+    // Derivados RECOMPUTADOS desde los datos fuente, no desde el archivo.
+    const derived = computeDailyMetrics({
+      mode: nextBudget.mode,
+      endDate: nextBudget.endDate,
+      accounts: nextAccounts,
+      transactions: nextTransactions,
+      today,
+    })
+
+    // lastCheckedDay: se respeta el del archivo si existe y es válido; si no,
+    // "hoy" (el day-check effect no debe re-calculcar ni rollover el import).
+    const rawLastChecked = data.lastCheckedDay ? new Date(data.lastCheckedDay) : null
+    const nextLastCheckedDay =
+      rawLastChecked && !Number.isNaN(rawLastChecked.getTime()) ? rawLastChecked : today
+
+    const next = {
+      budget: nextBudget,
+      accounts: nextAccounts,
+      transactions: nextTransactions,
+      dailyAllowance: derived.dailyAllowance,
+      remainingToday: derived.remainingToday,
+      progress: derived.progress,
+      lastCheckedDay: nextLastCheckedDay,
+      isSetup: true as const,
+    }
+
+    // Persistir primero (mismo shape que el save effect) y luego actualizar el
+    // estado: el save effect re-escribe exactamente lo mismo.
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next))
+
+    setBudget(nextBudget)
+    setAccounts(nextAccounts)
+    setTransactions(nextTransactions)
+    setDailyAllowance(derived.dailyAllowance)
+    setRemainingToday(derived.remainingToday)
+    setProgress(derived.progress)
+    setLastCheckedDay(nextLastCheckedDay)
+    setIsSetup(true)
+  }
+
   return {
     // Values
     accounts,
@@ -736,6 +825,7 @@ export function useBudget() {
     deleteAccount,
     getRemainingDays,
     removeTransaction,
+    replaceAll,
     setupBudget,
     setLastCheckedDay,
     toggleAutoSave,
