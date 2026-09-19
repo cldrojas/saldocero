@@ -82,14 +82,15 @@ T6 cubre resto de copy desktop + tests + README.
 - [x] T1 — Shell de layout (Fase A): `app-shell.tsx` + `sidebar-nav.tsx`; levantar
   `activeSurface`; `lg:` sidebar fijo + content; `<lg:` Tabs actuales iguales
   (controlados por el mismo estado); limpiar nombres hardcodeados → claves i18n.
-- [ ] T2 — Dashboard Resumen (Fase B): grid 2 columnas a `lg:` con
+- [x] T2 — Dashboard Resumen (Fase B): grid 2 columnas a `lg:` con
   `DailyBudgetStatus` + `AccountsList` + `RecentTransactions` (helper de formato de
   fecha compartido extraído de `transaction-history.tsx`).
 - [ ] T3 — Acciones + hotkeys (Fase C): acciones "Nueva transacción"/"Transferir"
   en sidebar; FAB oculto a `lg:`; `hooks/use-hotkeys.ts` (`n` `t` `1..4`) con guard
   de viewport y tooltips/aria para descubrimiento.
-- [ ] T4 — Modales en desktop (Fase D): verificar/ajustar anchos de
-  `DialogContent`/`AlertDialogContent` y centrado a desktop; mobile intacto.
+- [x] T4 — Modales en desktop (Fase D): verificado sin cambio 2026-09-19 —
+  `DialogContent`/`AlertDialogContent` ya son `w-full max-w-lg` centrados y
+  `max-w-lg` en desktop cumple el criterio; mobile intacto.
 - [ ] T5 — Sync + Ajustes en sidebar (Fase F): secciones que renderizan
   `ConfigForm` (ajustes) y `SyncQrModal` (sync) en el content area a `lg:`, sin
   hamburguesa; mobile intacto.
@@ -121,3 +122,10 @@ T6 cubre resto de copy desktop + tests + README.
   `page.tsx` (modales + FAB hosteados en la raíz compartidos por ambos shells); tabs
   mobile controlados (`lg:hidden`), labels vía i18n; FAB `lg:hidden`. Gates: tsc ✓,
   vitest 116/116 ✓, lint 0 errors (5 warnings pre-existentes). → commit `422c8a3`
+
+## Progreso slice 2 (rama `feat/desktop-ui-dashboard`)
+- 2026-09-19: T2 implementado. `lib/transaction-date.ts` (helper compartido),
+  `components/recent-transactions.tsx` (últimos 6 movimientos), overview desktop en
+  grid 2 col `lg:` (24rem + 1fr), claves `overview.recentTransactions` es/en.
+  T4 verificado sin cambio (D está satisfecho por `max-w-lg` existente).
+  Gates: tsc ✓, vitest 116/116 ✓, lint 0 errors. → commit `S2`

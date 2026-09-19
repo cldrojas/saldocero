@@ -1,8 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale/es'
 import { Trash2 } from 'lucide-react'
 import {
   Card,
@@ -22,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/contexts/language-context'
 import { useCurrency } from '@/contexts/currency-context'
+import { formatTransactionDate } from '@/lib/transaction-date'
 import { Account, Transaction } from '@/types'
 import { DeleteTransactionModal } from '@/components/modals/delete-transaction-modal'
 
@@ -47,17 +46,6 @@ export function TransactionHistory({
   const sortedTransactions = transactions.toSorted(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   )
-
-  // Set locale based on language
-  const locale = language === 'es' ? es : undefined
-  const formatTransactionDate = (date: Date | string) => {
-    const formattedDate = format(new Date(date), 'd MMM', { locale }).replace(
-      /\./g,
-      ''
-    )
-    const [day, month] = formattedDate.split(' ')
-    return `${day} ${month.slice(0, 3)}`
-  }
 
   const handleDelete = (refund: boolean) => {
     if (!deleteTarget) return
@@ -100,7 +88,7 @@ export function TransactionHistory({
                     return (
                       <TableRow key={transaction.id}>
                         <TableCell>
-                          {formatTransactionDate(transaction.date)}
+                          {formatTransactionDate(transaction.date, language)}
                         </TableCell>
                         <TableCell>{description}</TableCell>
                         <TableCell className="capitalize">
@@ -156,7 +144,7 @@ export function TransactionHistory({
                         <time
                           dateTime={new Date(transaction.date).toISOString()}
                         >
-                          {formatTransactionDate(transaction.date)}
+                          {formatTransactionDate(transaction.date, language)}
                         </time>
                         <span aria-hidden="true">•</span>
                         <span className="capitalize break-words">

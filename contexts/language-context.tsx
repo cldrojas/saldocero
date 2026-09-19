@@ -97,6 +97,7 @@ export const translations = {
 
     // Desktop sidebar
     'sidebar.overview': 'Overview',
+    'overview.recentTransactions': 'Recent transactions',
 
     // Transaction Form
     addIncome: 'Add Income',
@@ -316,6 +317,7 @@ export const translations = {
 
     // Desktop sidebar
     'sidebar.overview': 'Resumen',
+    'overview.recentTransactions': 'Movimientos recientes',
 
     // Transaction Form
     addIncome: 'Agregar ingreso',

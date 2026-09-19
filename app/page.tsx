@@ -11,6 +11,7 @@ import { ErrorBoundary, EmptyState } from '@/components/error-boundary'
 import Navbar, { type MobileTab } from '@/components/navbar'
 import { AppShell } from '@/components/layout/app-shell'
 import { AccountsList } from '@/components/accounts-list'
+import { RecentTransactions } from '@/components/recent-transactions'
 import { TransactionHistory } from '@/components/transaction-history'
 import { TransactionModal } from '@/components/modals/transaction-modal'
 import { TransferModal } from '@/components/modals/transfer-modal'
@@ -132,7 +133,7 @@ export default function DailyBudgetApp() {
             {/* Desktop surfaces (lg+): sidebar-driven, no tab switching. */}
             <div className="hidden lg:block space-y-8">
               {activeSurface === 'overview' && (
-                <>
+                <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
                   <ErrorBoundary>
                     <DailyBudgetStatus
                       budget={budget}
@@ -143,14 +144,22 @@ export default function DailyBudgetApp() {
                       remainingDays={getRemainingDays()}
                     />
                   </ErrorBoundary>
-                  <ErrorBoundary>
-                    <AccountsList
-                      accounts={accounts}
-                      budget={budget}
-                      {...desktopAccountActions}
-                    />
-                  </ErrorBoundary>
-                </>
+                  <div className="min-w-0 space-y-6">
+                    <ErrorBoundary>
+                      <AccountsList
+                        accounts={accounts}
+                        budget={budget}
+                        {...desktopAccountActions}
+                      />
+                    </ErrorBoundary>
+                    <ErrorBoundary>
+                      <RecentTransactions
+                        accounts={accounts}
+                        transactions={transactions}
+                      />
+                    </ErrorBoundary>
+                  </div>
+                </div>
               )}
               {activeSurface === 'accounts' && (
                 <ErrorBoundary>
