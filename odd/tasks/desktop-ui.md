@@ -99,14 +99,20 @@ T6 cubre resto de copy desktop + tests + README.
   acciones, sin FAB); README estructura.
 
 ## Criterios de aceptación (de #10)
-- [ ] A ≥1024px la sidebar + overview muestran presupuesto, cuentas y movimientos
-  recientes sin abrir tabs.
-- [ ] Sin FAB a `lg:`; "Nueva transacción" y "Transferir" siempre visibles en la sidebar.
-- [ ] Tabla de historial usable en 1280×800 sin scroll horizontal.
-- [ ] Todos los flujos mobile intactos por debajo de 1024px.
-- [ ] Atajos de teclado funcionan y son descubribles (tooltip/aria).
-- [ ] Claves i18n nuevas presentes en `es` y `en`.
-- [ ] Specs Playwright desktop nuevos pasan; specs mobile existentes siguen verdes.
+- [x] A ≥1024px la sidebar + overview muestran presupuesto, cuentas y movimientos
+  recientes sin abrir tabs. (sonda a 1280 + `desktop-shell.spec.ts`)
+- [x] Sin FAB a `lg:`; "Nueva transacción" y "Transferir" siempre visibles en la sidebar.
+- [ ] Tabla de historial usable en 1280×800 sin scroll horizontal. **NO verificado**:
+  requiere medir `scrollWidth` de la tabla a 1280×800 (no hay asserts de eso todavía).
+- [ ] Todos los flujos mobile intactos por debajo de 1024px. **Parcial**: verificado
+  que el chrome mobile aparece a 390×844 y desaparece a 1280; los flujos mobile
+  completos no están cubiertos porque la suite E2E está rota desde antes (ver
+  hallazgo 3 del slice 5).
+- [x] Atajos de teclado funcionan y son descubribles (tooltip/aria).
+- [x] Claves i18n nuevas presentes en `es` y `en`.
+- [ ] Specs Playwright desktop nuevos pasan (`5/5` ✓); specs mobile existentes siguen
+  verdes: **no**, están en rojo desde antes por el helper `test-utils.ts` roto (no
+  por esta cadena). Repararlos es un PR aparte.
 
 ## Progreso
 - 2026-09-19: ciclo iniciado. Mapa de anatomía completo (shell en `page.tsx`,
