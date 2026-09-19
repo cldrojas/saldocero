@@ -144,13 +144,16 @@ T6 cubre resto de copy desktop + tests + README.
 ## Progreso slice 4 (rama `feat/desktop-ui-sync`)
 - 2026-09-19: T5 implementado. Hallazgo: la hamburguesa (`HeaderMenu` Sheet) es
   `sm:hidden`, o sea que en desktop **Ajustes y Sync eran inalcanzables** — esto es
-  lo que cierra la Fase F. Nuevo `components/sync/sync-panel.tsx`: el cuerpo del
-  flujo export/import extraído VERBATIM de `sync-qr-modal.tsx` (que ahora es un
-  wrapper fino del Dialog con el título/descripción Radix), para renderizar el
-  mismo UI inline sin duplicar lógica. Nuevo `components/sync/sync-section.tsx`
+  lo que cierra la Fase F. Nuevo `components/sync/sync-section.tsx`
   (selector Exportar/Importar + panel, remount por `key` para resetear el flujo).
-  Sección Ajustes = `ConfigForm` inline. Sidebar: ítems Sync (RefreshCw) y Ajustes
-  (Settings) con atajos 4/5 → **desvío consciente del ticket**: el blueprint decía
-  `1..4`, pero hay 5 secciones; los atajos cubren 1..5. Claves `sidebar.sync` y
-  `sidebar.settings` es/en. Gates: tsc ✓, vitest 116/116 ✓, lint 0 errors,
-  `next build` ✓ (SSR de las secciones nuevas). → commit `S4`
+  `components/sync/sync-qr-modal.tsx` ahora exporta `SyncPanel` (el cuerpo del
+  flujo, agnóstico del Dialog) + `SyncQrModal` (wrapper fino con título/descripción
+  Radix) EN EL MISMO MÓDULO: primero se extrajo a un archivo aparte
+  (`sync-panel.tsx`) y se consolidó de vuelta porque mudar 540 líneas entre
+  archivos inflaba el diff de review a 1238 líneas sin cambiar una línea de
+  lógica. Sección Ajustes = `ConfigForm` inline. Sidebar: ítems Sync (RefreshCw) y
+  Ajustes (Settings) con atajos 4/5 → **desvío consciente del ticket**: el
+  blueprint decía `1..4`, pero hay 5 secciones; los atajos cubren 1..5. Claves
+  `sidebar.sync` y `sidebar.settings` es/en. Gates: tsc ✓, vitest 116/116 ✓,
+  lint 0 errors, `next build` ✓ (SSR de las secciones nuevas). Diff del slice:
+  +344/−205 = 549 (sobre las 400) → requiere `size:exception`. → commit `2475652`
