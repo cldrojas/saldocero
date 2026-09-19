@@ -91,9 +91,9 @@ T6 cubre resto de copy desktop + tests + README.
 - [x] T4 — Modales en desktop (Fase D): verificado sin cambio 2026-09-19 —
   `DialogContent`/`AlertDialogContent` ya son `w-full max-w-lg` centrados y
   `max-w-lg` en desktop cumple el criterio; mobile intacto.
-- [ ] T5 — Sync + Ajustes en sidebar (Fase F): secciones que renderizan
-  `ConfigForm` (ajustes) y `SyncQrModal` (sync) en el content area a `lg:`, sin
-  hamburguesa; mobile intacto.
+- [x] T5 — Sync + Ajustes en sidebar (Fase F): secciones que renderizan
+  `ConfigForm` (ajustes) y `SyncPanel` (sync, extraído de `SyncQrModal`) en el
+  content area a `lg:`, sin hamburguesa; mobile intacto.
 - [ ] T6 — i18n + tests + docs (Fase G): claves es/en (sidebar, copy desktop);
   unit tests `app-shell` + `use-hotkeys`; specs Playwright 1280×800 (shell,
   acciones, sin FAB) sin romper los specs mobile existentes; README estructura.
@@ -140,3 +140,17 @@ T6 cubre resto de copy desktop + tests + README.
   `sidebar.newTransaction` es/en. Hotkeys sólo activas con budget configurado y
   cuentas (no secuestran setup/empty). Gates: tsc ✓, vitest 116/116 ✓, lint 0
   errors. → commit `d22414e`
+
+## Progreso slice 4 (rama `feat/desktop-ui-sync`)
+- 2026-09-19: T5 implementado. Hallazgo: la hamburguesa (`HeaderMenu` Sheet) es
+  `sm:hidden`, o sea que en desktop **Ajustes y Sync eran inalcanzables** — esto es
+  lo que cierra la Fase F. Nuevo `components/sync/sync-panel.tsx`: el cuerpo del
+  flujo export/import extraído VERBATIM de `sync-qr-modal.tsx` (que ahora es un
+  wrapper fino del Dialog con el título/descripción Radix), para renderizar el
+  mismo UI inline sin duplicar lógica. Nuevo `components/sync/sync-section.tsx`
+  (selector Exportar/Importar + panel, remount por `key` para resetear el flujo).
+  Sección Ajustes = `ConfigForm` inline. Sidebar: ítems Sync (RefreshCw) y Ajustes
+  (Settings) con atajos 4/5 → **desvío consciente del ticket**: el blueprint decía
+  `1..4`, pero hay 5 secciones; los atajos cubren 1..5. Claves `sidebar.sync` y
+  `sidebar.settings` es/en. Gates: tsc ✓, vitest 116/116 ✓, lint 0 errors,
+  `next build` ✓ (SSR de las secciones nuevas). → commit `S4`
