@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/contexts/language-context'
-import { SyncPanel } from '@/components/sync/sync-panel'
+import { SyncPanel } from '@/components/sync/sync-qr-modal'
 
 /**
  * Desktop Sync section (issue #10, Phase F): renders the QR claim export/import
