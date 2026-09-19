@@ -814,6 +814,7 @@ export function useBudget() {
     budget,
     dailyAllowance,
     isSetup,
+    lastCheckedDay,
     progress,
     remainingToday,
     transactions,
