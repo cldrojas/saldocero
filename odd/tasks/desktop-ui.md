@@ -86,7 +86,8 @@ T6 cubre resto de copy desktop + tests + README.
   `DailyBudgetStatus` + `AccountsList` + `RecentTransactions` (helper de formato de
   fecha compartido extraído de `transaction-history.tsx`).
 - [x] T3 — Acciones + hotkeys (Fase C): acciones "Nueva transacción"/"Transferir"
-  en sidebar; FAB oculto a `lg:`; `hooks/use-hotkeys.ts` (`n` `t` `1..4`) con guard
+  en sidebar; FAB oculto a `lg:`; `hooks/use-hotkeys.ts` (`n` `t` `1..5` — el
+  blueprint decía `1..4`, hay 5 secciones) con guard
   de viewport y tooltips/aria para descubrimiento.
 - [x] T4 — Modales en desktop (Fase D): verificado sin cambio 2026-09-19 —
   `DialogContent`/`AlertDialogContent` ya son `w-full max-w-lg` centrados y
