@@ -128,4 +128,4 @@ T6 cubre resto de copy desktop + tests + README.
   `components/recent-transactions.tsx` (últimos 6 movimientos), overview desktop en
   grid 2 col `lg:` (24rem + 1fr), claves `overview.recentTransactions` es/en.
   T4 verificado sin cambio (D está satisfecho por `max-w-lg` existente).
-  Gates: tsc ✓, vitest 116/116 ✓, lint 0 errors. → commit `S2`
+  Gates: tsc ✓, vitest 116/116 ✓, lint 0 errors. → commit `8955284`
