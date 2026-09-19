@@ -97,6 +97,8 @@ export const translations = {
 
     // Desktop sidebar
     'sidebar.overview': 'Overview',
+    'sidebar.sync': 'Sync',
+    'sidebar.settings': 'Settings',
     'sidebar.newTransaction': 'New transaction',
     'overview.recentTransactions': 'Recent transactions',
 
@@ -318,6 +320,8 @@ export const translations = {
 
     // Desktop sidebar
     'sidebar.overview': 'Resumen',
+    'sidebar.sync': 'Sincronizar',
+    'sidebar.settings': 'Ajustes',
     'sidebar.newTransaction': 'Nueva transacción',
     'overview.recentTransactions': 'Movimientos recientes',
 

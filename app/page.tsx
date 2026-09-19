@@ -13,6 +13,8 @@ import { AppShell } from '@/components/layout/app-shell'
 import { AccountsList } from '@/components/accounts-list'
 import { RecentTransactions } from '@/components/recent-transactions'
 import { TransactionHistory } from '@/components/transaction-history'
+import { ConfigForm } from '@/components/config-form'
+import { SyncSection } from '@/components/sync/sync-section'
 import { TransactionModal } from '@/components/modals/transaction-modal'
 import { TransferModal } from '@/components/modals/transfer-modal'
 import { useHotkeys } from '@/hooks/use-hotkeys'
@@ -88,7 +90,9 @@ export default function DailyBudgetApp() {
           t: openTransfer,
           '1': () => setActiveSurface('overview'),
           '2': () => setActiveSurface('accounts'),
-          '3': () => setActiveSurface('history')
+          '3': () => setActiveSurface('history'),
+          '4': () => setActiveSurface('sync'),
+          '5': () => setActiveSurface('settings')
         }
       : {}
   )
@@ -201,6 +205,30 @@ export default function DailyBudgetApp() {
                     transactions={transactions}
                     removeTransaction={removeTransaction}
                   />
+                </ErrorBoundary>
+              )}
+              {activeSurface === 'sync' && (
+                <ErrorBoundary>
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-semibold tracking-tight">
+                      {t('sidebar.sync')}
+                    </h2>
+                    <SyncSection />
+                  </div>
+                </ErrorBoundary>
+              )}
+              {activeSurface === 'settings' && (
+                <ErrorBoundary>
+                  <div className="max-w-2xl space-y-6">
+                    <h2 className="text-2xl font-semibold tracking-tight">
+                      {t('sidebar.settings')}
+                    </h2>
+                    <ConfigForm
+                      budget={budget}
+                      onUpdateConfig={updateConfig}
+                      onClearData={clearData}
+                    />
+                  </div>
                 </ErrorBoundary>
               )}
             </div>
