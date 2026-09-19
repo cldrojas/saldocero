@@ -15,6 +15,7 @@ import { RecentTransactions } from '@/components/recent-transactions'
 import { TransactionHistory } from '@/components/transaction-history'
 import { TransactionModal } from '@/components/modals/transaction-modal'
 import { TransferModal } from '@/components/modals/transfer-modal'
+import { useHotkeys } from '@/hooks/use-hotkeys'
 import type { AppSurface, Transaction } from '@/types'
 
 /**
@@ -63,6 +64,8 @@ export default function DailyBudgetApp() {
     setIsTransactionModalOpen(true)
   }
 
+  const openTransfer = () => setIsTransferModalOpen(true)
+
   const closeTransactionModal = () => {
     setIsTransactionModalOpen(false)
     setEditingTransaction(null)
@@ -73,6 +76,22 @@ export default function DailyBudgetApp() {
   const activeTab: MobileTab = activeSurface === 'accounts' ? 'accounts' : 'history'
 
   const handleActiveTabChange = (tab: MobileTab) => setActiveSurface(tab)
+
+  // Desktop shortcuts (issue #10, Phase C): only active once the budget is set up
+  // and accounts exist, so setup/empty flows never get hijacked. useHotkeys
+  // ignores everything below lg.
+  const shellActionsAvailable = Boolean(isSetup && accounts.length > 0)
+  useHotkeys(
+    shellActionsAvailable
+      ? {
+          n: openNewTransaction,
+          t: openTransfer,
+          '1': () => setActiveSurface('overview'),
+          '2': () => setActiveSurface('accounts'),
+          '3': () => setActiveSurface('history')
+        }
+      : {}
+  )
 
   // AccountsList expects on* prop names; Navbar expects the plain names.
   const desktopAccountActions = {
@@ -128,7 +147,12 @@ export default function DailyBudgetApp() {
           </main>
         ) : (
           <AppShell
-            nav={{ activeSurface, onSurfaceChange: setActiveSurface }}
+            nav={{
+              activeSurface,
+              onSurfaceChange: setActiveSurface,
+              onNewTransaction: openNewTransaction,
+              onTransfer: openTransfer
+            }}
           >
             {/* Desktop surfaces (lg+): sidebar-driven, no tab switching. */}
             <div className="hidden lg:block space-y-8">
@@ -206,7 +230,7 @@ export default function DailyBudgetApp() {
                   deleteAccount={deleteAccount}
                   removeTransaction={removeTransaction}
                   onAddTransactionRequest={openNewTransaction}
-                  onTransferRequest={() => setIsTransferModalOpen(true)}
+                  onTransferRequest={openTransfer}
                 />
               </div>
             </div>

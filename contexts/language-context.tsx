@@ -97,6 +97,7 @@ export const translations = {
 
     // Desktop sidebar
     'sidebar.overview': 'Overview',
+    'sidebar.newTransaction': 'New transaction',
     'overview.recentTransactions': 'Recent transactions',
 
     // Transaction Form
@@ -317,6 +318,7 @@ export const translations = {
 
     // Desktop sidebar
     'sidebar.overview': 'Resumen',
+    'sidebar.newTransaction': 'Nueva transacción',
     'overview.recentTransactions': 'Movimientos recientes',
 
     // Transaction Form
