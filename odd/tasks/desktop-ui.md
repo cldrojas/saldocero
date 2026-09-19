@@ -85,7 +85,7 @@ T6 cubre resto de copy desktop + tests + README.
 - [x] T2 — Dashboard Resumen (Fase B): grid 2 columnas a `lg:` con
   `DailyBudgetStatus` + `AccountsList` + `RecentTransactions` (helper de formato de
   fecha compartido extraído de `transaction-history.tsx`).
-- [ ] T3 — Acciones + hotkeys (Fase C): acciones "Nueva transacción"/"Transferir"
+- [x] T3 — Acciones + hotkeys (Fase C): acciones "Nueva transacción"/"Transferir"
   en sidebar; FAB oculto a `lg:`; `hooks/use-hotkeys.ts` (`n` `t` `1..4`) con guard
   de viewport y tooltips/aria para descubrimiento.
 - [x] T4 — Modales en desktop (Fase D): verificado sin cambio 2026-09-19 —
@@ -129,3 +129,14 @@ T6 cubre resto de copy desktop + tests + README.
   grid 2 col `lg:` (24rem + 1fr), claves `overview.recentTransactions` es/en.
   T4 verificado sin cambio (D está satisfecho por `max-w-lg` existente).
   Gates: tsc ✓, vitest 116/116 ✓, lint 0 errors. → commit `8955284`
+
+## Progreso slice 3 (rama `feat/desktop-ui-actions`)
+- 2026-09-19: T3 implementado. `hooks/use-hotkeys.ts` (`n`/`t`/`1..3`, guard
+  `matchMedia('(min-width: 1024px)')`, ignora inputs y modificadores; los handlers
+  se sincronizan vía ref EN UN EFECTO porque el lint del React Compiler prohíbe
+  tocar refs durante el render). `sidebar-nav.tsx`: acciones "Nueva transacción"
+  (Plus) y "Transferir" (ArrowRightLeft) siempre visibles con
+  `aria-keyshortcuts`/`title`; ítems de nav con atajos 1/2/3. Clave
+  `sidebar.newTransaction` es/en. Hotkeys sólo activas con budget configurado y
+  cuentas (no secuestran setup/empty). Gates: tsc ✓, vitest 116/116 ✓, lint 0
+  errors. → commit `d22414e`
