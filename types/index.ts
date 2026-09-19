@@ -78,3 +78,7 @@ export type Account = {
   icon: string
   hidden?: boolean
 }
+
+// Active surface shared by the desktop sidebar (lg+) and the mobile tab chrome.
+// `sync` and `settings` are wired to their desktop surfaces in a later phase.
+export type AppSurface = 'overview' | 'accounts' | 'history' | 'sync' | 'settings'

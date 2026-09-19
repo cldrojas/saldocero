@@ -1,170 +1,124 @@
 'use client'
 
-import { useState } from 'react'
 import { AccountsList } from './accounts-list'
 import { ErrorBoundary } from './error-boundary'
 import { TransactionHistory } from './transaction-history'
-import { TransactionModal } from './modals/transaction-modal'
-import { TransferModal } from './modals/transfer-modal'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Button } from '@/components/ui/button'
 import { ArrowRightLeft, HistoryIcon, Plus, WalletIcon } from 'lucide-react'
-import { Account, Budget, Transaction, Int } from '@/types'
+import { Account, Budget, Transaction, type AppSurface } from '@/types'
 import { useLanguage } from '@/contexts/language-context'
+
+/** Mobile tab bar surfaces; the wider AppSurface also includes overview/sync/settings. */
+export type MobileTab = Extract<AppSurface, 'accounts' | 'history'>
 
 interface NavbarProps {
   accounts: Account[]
   budget: Budget
   transactions: Transaction[]
+  activeTab: MobileTab
+  onActiveTabChange: (tab: MobileTab) => void
   addAccount: (account: Omit<Account, 'id'>) => void
   updateAccount: (account: Account) => void
   deleteAccount: (accountId: string) => boolean
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => void
-  updateTransaction: (transaction: Transaction) => void
   removeTransaction: (transactionId: string, refund?: boolean) => void
-  transferFunds: (transfer: {
-    amount: Int
-    fromAccount: string
-    toAccount: string
-    description?: string
-  }) => void
+  onAddTransactionRequest: () => void
+  onTransferRequest: () => void
 }
 
+/**
+ * Mobile chrome: tab bar + tab content + FAB. The active-tab state is owned by
+ * the composition root (app/page.tsx) so the desktop sidebar (issue #10,
+ * Phase A) drives the same surfaces; FAB and modals are hosted at the root too,
+ * so desktop actions can reuse them.
+ */
 export default function Navbar({
   accounts,
   budget,
   transactions,
+  activeTab,
+  onActiveTabChange,
   addAccount,
   updateAccount,
   deleteAccount,
-  addTransaction,
-  updateTransaction,
   removeTransaction,
-  transferFunds
+  onAddTransactionRequest,
+  onTransferRequest
 }: NavbarProps) {
-  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false)
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
-  const [editingTransaction, setEditingTransaction] =
-    useState<Transaction | null>(null)
   const { t } = useLanguage()
-
-  // Calculate remainingToday for the transaction modal
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const todayTransactions = transactions.filter((t) => {
-    const txDate = new Date(t.date)
-    txDate.setHours(0, 0, 0, 0)
-    return txDate.getTime() === today.getTime() && t.type === 'expense'
-  })
-  const totalSpentToday = todayTransactions.reduce(
-    (sum, t) => sum + Math.abs(Number(t.amount)),
-    0
-  )
-  const dailyAllowance =
-    budget.startAmount && budget.endDate
-      ? Math.floor(
-          Number(budget.startAmount) /
-            Math.ceil(
-              (Number(budget.endDate) - Number(budget.startDate)) /
-                (1000 * 60 * 60 * 24)
-            )
-        )
-      : 0
-  const remainingToday = dailyAllowance - totalSpentToday
 
   return (
     <ErrorBoundary>
-      <Tabs
-        defaultValue="accounts"
-        className="relative"
-      >
-        <TabsList className="grid w-full grid-cols-3 h-20 bg-slate-900/40">
-          <TabsTrigger
-            className="gap-2 min-h-full"
+      {/* Mobile tab chrome. Hidden at lg: the desktop sidebar drives the same state. */}
+      <div className="lg:hidden">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => onActiveTabChange(value as MobileTab)}
+          className="relative"
+        >
+          <TabsList className="grid w-full grid-cols-3 h-20 bg-slate-900/40">
+            <TabsTrigger
+              className="gap-2 min-h-full"
+              value="accounts"
+            >
+              <WalletIcon size={16}></WalletIcon>
+              {t('accounts')}
+            </TabsTrigger>
+            <Button
+              className="flex gap-4 rounded-full"
+              onClick={onTransferRequest}
+            >
+              <ArrowRightLeft className="h-5 w-5" />
+              <small className="font-bold">{t('transfer')}</small>
+            </Button>
+            <TabsTrigger
+              className="gap-2 min-h-full"
+              value="history"
+            >
+              <HistoryIcon size={16}></HistoryIcon>
+              {t('history')}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent
             value="accounts"
+            className="mt-6"
           >
-            <WalletIcon size={16}></WalletIcon>
-            Cuentas
-          </TabsTrigger>
-          <Button
-            className="flex gap-4 rounded-full  "
-            onClick={() => setIsTransferModalOpen(true)}
-          >
-            <ArrowRightLeft className="h-5 w-5" />
-            <small className="font-bold">Transferir</small>
-          </Button>
-          <TabsTrigger
-            className="gap-2 min-h-full"
+            <ErrorBoundary>
+              <AccountsList
+                accounts={accounts}
+                budget={budget}
+                onAddAccount={addAccount}
+                onUpdateAccount={updateAccount}
+                onDeleteAccount={deleteAccount}
+              />
+            </ErrorBoundary>
+          </TabsContent>
+
+          <TabsContent
             value="history"
+            className="mt-6"
           >
-            <HistoryIcon size={16}></HistoryIcon>Historial
-          </TabsTrigger>
-        </TabsList>
+            <ErrorBoundary>
+              <TransactionHistory
+                accounts={accounts}
+                transactions={transactions}
+                removeTransaction={removeTransaction}
+              />
+            </ErrorBoundary>
+          </TabsContent>
+        </Tabs>
+      </div>
 
-        <TabsContent
-          value="accounts"
-          className="mt-6"
-        >
-          <ErrorBoundary>
-            <AccountsList
-              accounts={accounts}
-              budget={budget}
-              onAddAccount={addAccount}
-              onUpdateAccount={updateAccount}
-              onDeleteAccount={deleteAccount}
-            />
-          </ErrorBoundary>
-        </TabsContent>
-
-        <TabsContent
-          value="history"
-          className="mt-6"
-        >
-          <ErrorBoundary>
-            <TransactionHistory
-              accounts={accounts}
-              transactions={transactions}
-              removeTransaction={removeTransaction}
-            />
-          </ErrorBoundary>
-        </TabsContent>
-      </Tabs>
-
-
-      {/* Floating Action Button for adding transactions */}
+      {/* Floating Action Button for adding transactions. Hidden at lg where the
+          sidebar actions replace it (issue #10, Phase C). */}
       <Button
-        className="fixed bottom-6 right-6 rounded-full h-14 w-14 shadow-lg z-50"
-        onClick={() => {
-          setEditingTransaction(null)
-          setIsTransactionModalOpen(true)
-        }}
+        className="fixed bottom-6 right-6 rounded-full h-14 w-14 shadow-lg z-50 lg:hidden"
+        onClick={onAddTransactionRequest}
         title={t('addExpense')}
       >
         <Plus className="h-6 w-6" />
       </Button>
-
-      {/* Transaction Modal */}
-      <TransactionModal
-        isOpen={isTransactionModalOpen}
-        onClose={() => {
-          setIsTransactionModalOpen(false)
-          setEditingTransaction(null)
-        }}
-        onAddTransaction={addTransaction}
-        onUpdateTransaction={updateTransaction}
-        accounts={accounts}
-        remainingToday={remainingToday}
-        transaction={editingTransaction}
-        key={editingTransaction?.id}
-      />
-
-      {/* Transfer Modal */}
-      <TransferModal
-        isOpen={isTransferModalOpen}
-        onClose={() => setIsTransferModalOpen(false)}
-        onTransfer={transferFunds}
-        accounts={accounts}
-      />
     </ErrorBoundary>
   )
 }

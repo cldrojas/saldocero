@@ -95,6 +95,9 @@ export const translations = {
     history: 'History',
     income: 'Income',
 
+    // Desktop sidebar
+    'sidebar.overview': 'Overview',
+
     // Transaction Form
     addIncome: 'Add Income',
     addIncomeDescription: 'Record a new income',
@@ -310,6 +313,9 @@ export const translations = {
     accounts: 'Cuentas',
     history: 'Historial',
     income: 'Ingresos',
+
+    // Desktop sidebar
+    'sidebar.overview': 'Resumen',
 
     // Transaction Form
     addIncome: 'Agregar ingreso',
