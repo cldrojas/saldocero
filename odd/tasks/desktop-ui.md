@@ -139,4 +139,4 @@ T6 cubre resto de copy desktop + tests + README.
   `aria-keyshortcuts`/`title`; ítems de nav con atajos 1/2/3. Clave
   `sidebar.newTransaction` es/en. Hotkeys sólo activas con budget configurado y
   cuentas (no secuestran setup/empty). Gates: tsc ✓, vitest 116/116 ✓, lint 0
-  errors. → commit `S3`
+  errors. → commit `d22414e`
