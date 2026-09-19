@@ -94,9 +94,9 @@ T6 cubre resto de copy desktop + tests + README.
 - [x] T5 — Sync + Ajustes en sidebar (Fase F): secciones que renderizan
   `ConfigForm` (ajustes) y `SyncPanel` (sync, extraído de `SyncQrModal`) en el
   content area a `lg:`, sin hamburguesa; mobile intacto.
-- [ ] T6 — i18n + tests + docs (Fase G): claves es/en (sidebar, copy desktop);
+- [x] T6 — i18n + tests + docs (Fase G): claves es/en (sidebar, copy desktop);
   unit tests `app-shell` + `use-hotkeys`; specs Playwright 1280×800 (shell,
-  acciones, sin FAB) sin romper los specs mobile existentes; README estructura.
+  acciones, sin FAB); README estructura.
 
 ## Criterios de aceptación (de #10)
 - [ ] A ≥1024px la sidebar + overview muestran presupuesto, cuentas y movimientos
@@ -157,3 +157,38 @@ T6 cubre resto de copy desktop + tests + README.
   `sidebar.sync` y `sidebar.settings` es/en. Gates: tsc ✓, vitest 116/116 ✓,
   lint 0 errors, `next build` ✓ (SSR de las secciones nuevas). Diff del slice:
   +344/−205 = 549 (sobre las 400) → requiere `size:exception`. → commit `2475652`
+## Progreso slice 5 (rama `feat/desktop-ui-tests`)
+- 2026-09-19: T6 implementado. Auditoría de i18n: todas las claves usadas por los
+  componentes nuevos existen en es/en (los `labelKey` del sidebar son
+  `sidebar.overview|sync|settings`, `accounts`, `history`). Único literal sin
+  traducir: `aria-label="Main navigation"`, consistente con la convención
+  existente (`header-menu.tsx` usa "Open menu" / "Menu options" en inglés).
+- Tests unitarios nuevos: `tests/unit/app-shell.test.tsx` (6 tests: 5 secciones en
+  orden, `aria-keyshortcuts` 1-5, `aria-current` en una sola, callbacks sin estado
+  propio, acciones visibles y cableadas) y `tests/unit/use-hotkeys.test.tsx`
+  (9 tests: disparo, case-insensitive, viewport <1024, guardas de input/textarea/
+  contenteditable, modificadores, repeat, tecla sin handler, handlers frescos sin
+  re-suscripción, cleanup al desmontar). Suite: 116 → **131 tests**.
+- Tests E2E nuevos: `tests/ui/desktop-shell.spec.ts` (5 tests a 1280×800: 5
+  secciones y chrome mobile oculto, cambio de superficie sin recargar, sync con
+  sus dos modos, atajos 1/5/n/t, y paridad mobile a 390×844). 5/5 en verde.
+  No clickea "Compartir vía QR" a propósito: eso pegaría contra `/api/sync/claim`.
+- Hallazgos de test (documentados en los specs):
+  1. `tests/ui/e2e-constants.ts` lee credenciales en el import → sin `.env.e2e`
+     **rompe la colección** de cualquier spec que lo importe (por eso
+     `sync-qr.spec.ts` no se puede ni colectar acá). El spec nuevo evita ese
+     import y define su helper de idioma local.
+  2. `waitForSelector('h1')` no prueba hidratación: la app renderiza el SetupForm
+     (cuyo input tiene `autoFocus`) antes de hidratar y el `h1` existe en ambos
+     estados. Los atajos no disparaban porque el foco estaba en ese input; el
+     `beforeEach` ahora espera la sidebar (sólo existe hidratada).
+  3. **Deuda pre-existente, NO regresión**: `ensureConfiguredState`/
+     `ensureSetupState` (`tests/ui/test-utils.ts`, intacto en este ciclo) llaman
+     `page.reload()` sin `goto` previo → la página queda en `about:blank` y
+     `waitForAppReady` espera 30s al vacío. Verificado con sonda: `reload()` sin
+     navegación = `about:blank` / 0 `h1`. Por eso `transfer-form.spec.ts` (13) y
+     parte de `config-form.spec.ts` (9) / `language-selector.spec.ts` (3) están en
+     rojo desde antes de este ciclo; `test-utils.ts` no fue tocado por esta rama.
+     Además varios de esos specs asumen chrome mobile al viewport default (1280).
+- Gates: tsc ✓, vitest 131/131 ✓, lint 0 errors (5 warnings pre-existentes),
+  next build ✓, Playwright `desktop-shell.spec.ts` 5/5 ✓.

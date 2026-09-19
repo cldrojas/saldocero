@@ -50,12 +50,21 @@ Pensada para personas que:
 |-- date-picker.tsx
 |-- error-boundary.tsx
 |-- language-currency-selector.tsx
+|-- navbar.tsx
+|-- recent-transactions.tsx
 |-- setup-form.tsx
 |-- theme-provider.tsx
 |-- transaction-history.tsx
 |-- transactions-list.tsx
 |-- transfer-form.tsx
+|-- header-menu.tsx  # Iconos inline en desktop; hamburguesa + Sheet debajo de sm
+/components/layout  # Shell responsive
+|-- app-shell.tsx    # Sidebar fija a lg+ y area de contenido
+|-- sidebar-nav.tsx  # Secciones y acciones del sidebar (atajos 1-5, n, t)
 /components/modals  # Componentes modales
+/components/sync    # Flujo QR (claim) y su seccion de escritorio
+|-- sync-qr-modal.tsx  # SyncPanel (flujo) + SyncQrModal (wrapper de Dialog)
+|-- sync-section.tsx   # Seccion de sync inline para desktop
 /components/ui      # Primitivas de UI (buttons, dialogs, etc.)
 
 /contexts       # React Context providers (currency, language)
@@ -85,6 +94,7 @@ Pensada para personas que:
 ## 🏗 Arquitectura
 
 - **Frontend:** Construido con Next.js usando App Router y React Server Components para óptimo rendimiento y escalabilidad.
+- **Layout responsive:** Un solo árbol de estado de "superficie activa" alimenta dos chromes: sidebar fija a `lg` (1024px+) con secciones y acciones visibles, y tab bar + FAB por debajo. La superficie es estado del dueño (`app/page.tsx`); el sidebar no navega, notifica.
 - **Componentización:** Componentes UI modulares y hooks para mantenibilidad y reutilización.
 - **State:** Gestionado via React Context y custom hooks para budget, lenguaje y moneda.
 - **Backend:** Diseñado para ser serverless-first (Cloudflare Workers), adaptable a cualquier backend REST/GraphQL.
