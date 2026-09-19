@@ -120,4 +120,4 @@ T6 cubre resto de copy desktop + tests + README.
   + `sidebar-nav.tsx` (lg: sidebar fijo Resumen/Cuentas/Historial); estado levantado a
   `page.tsx` (modales + FAB hosteados en la raíz compartidos por ambos shells); tabs
   mobile controlados (`lg:hidden`), labels vía i18n; FAB `lg:hidden`. Gates: tsc ✓,
-  vitest 116/116 ✓, lint 0 errors (5 warnings pre-existentes).
+  vitest 116/116 ✓, lint 0 errors (5 warnings pre-existentes). → commit `422c8a3`
