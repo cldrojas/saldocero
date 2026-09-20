@@ -95,6 +95,13 @@ export const translations = {
     history: 'History',
     income: 'Income',
 
+    // Desktop sidebar
+    'sidebar.overview': 'Overview',
+    'sidebar.sync': 'Sync',
+    'sidebar.settings': 'Settings',
+    'sidebar.newTransaction': 'New transaction',
+    'overview.recentTransactions': 'Recent transactions',
+
     // Transaction Form
     addIncome: 'Add Income',
     addIncomeDescription: 'Record a new income',
@@ -310,6 +317,13 @@ export const translations = {
     accounts: 'Cuentas',
     history: 'Historial',
     income: 'Ingresos',
+
+    // Desktop sidebar
+    'sidebar.overview': 'Resumen',
+    'sidebar.sync': 'Sincronizar',
+    'sidebar.settings': 'Ajustes',
+    'sidebar.newTransaction': 'Nueva transacción',
+    'overview.recentTransactions': 'Movimientos recientes',
 
     // Transaction Form
     addIncome: 'Agregar ingreso',

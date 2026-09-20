@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useBudget } from '@/hooks/use-budget'
 import { HeaderMenu } from '@/components/header-menu'
@@ -7,10 +8,24 @@ import { useLanguage } from '@/contexts/language-context'
 import { SetupForm } from '@/components/setup-form'
 import { DailyBudgetStatus } from '@/components/daily-budget-status'
 import { ErrorBoundary, EmptyState } from '@/components/error-boundary'
-import Navbar from '@/components/navbar'
+import Navbar, { type MobileTab } from '@/components/navbar'
+import { AppShell } from '@/components/layout/app-shell'
+import { AccountsList } from '@/components/accounts-list'
+import { RecentTransactions } from '@/components/recent-transactions'
+import { TransactionHistory } from '@/components/transaction-history'
+import { ConfigForm } from '@/components/config-form'
+import { SyncSection } from '@/components/sync/sync-section'
+import { TransactionModal } from '@/components/modals/transaction-modal'
+import { TransferModal } from '@/components/modals/transfer-modal'
+import { useHotkeys } from '@/hooks/use-hotkeys'
+import type { AppSurface, Transaction } from '@/types'
 
 /**
  * Main component for the Daily Budget application.
+ * Composition root: owns the active surface (shared by the desktop sidebar and
+ * the mobile tab chrome) and the new-transaction/transfer modals (openable from
+ * both shells). Two responsive surfaces reuse the same content components
+ * (issue #10): desktop at lg+ via the sidebar, mobile below lg via the tabs.
  * @returns JSX element for the entire app.
  */
 export default function DailyBudgetApp() {
@@ -37,6 +52,58 @@ export default function DailyBudgetApp() {
     removeTransaction
   } = useBudget()
 
+  // Active surface: desktop sidebar (lg+) and mobile tab bar drive the same content.
+  const [activeSurface, setActiveSurface] = useState<AppSurface>('overview')
+
+  // Modal state lives here so both the mobile chrome (FAB / tab bar) and the
+  // desktop sidebar actions can open the same modals.
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+
+  const openNewTransaction = () => {
+    setEditingTransaction(null)
+    setIsTransactionModalOpen(true)
+  }
+
+  const openTransfer = () => setIsTransferModalOpen(true)
+
+  const closeTransactionModal = () => {
+    setIsTransactionModalOpen(false)
+    setEditingTransaction(null)
+  }
+
+  // Mobile tabs only expose accounts/history; overview defaults to the accounts
+  // tab so first load stays identical to the pre-desktop behavior.
+  const activeTab: MobileTab = activeSurface === 'accounts' ? 'accounts' : 'history'
+
+  const handleActiveTabChange = (tab: MobileTab) => setActiveSurface(tab)
+
+  // Desktop shortcuts (issue #10, Phase C): only active once the budget is set up
+  // and accounts exist, so setup/empty flows never get hijacked. useHotkeys
+  // ignores everything below lg.
+  const shellActionsAvailable = Boolean(isSetup && accounts.length > 0)
+  useHotkeys(
+    shellActionsAvailable
+      ? {
+          n: openNewTransaction,
+          t: openTransfer,
+          '1': () => setActiveSurface('overview'),
+          '2': () => setActiveSurface('accounts'),
+          '3': () => setActiveSurface('history'),
+          '4': () => setActiveSurface('sync'),
+          '5': () => setActiveSurface('settings')
+        }
+      : {}
+  )
+
+  // AccountsList expects on* prop names; Navbar expects the plain names.
+  const desktopAccountActions = {
+    onAddAccount: addAccount,
+    onUpdateAccount: updateAccount,
+    onDeleteAccount: deleteAccount
+  }
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-background">
@@ -51,8 +118,8 @@ export default function DailyBudgetApp() {
           </div>
         </header>
 
-        <main className="container px-4 py-6 md:py-10 space-y-8">
-          {!isSetup ? (
+        {!isSetup ? (
+          <main className="container px-4 py-6 md:py-10 space-y-8">
             <ErrorBoundary>
               <SetupForm
                 onSetup={({ startAmount, endDate, mode }) => {
@@ -60,27 +127,41 @@ export default function DailyBudgetApp() {
                 }}
               />
             </ErrorBoundary>
-          ) : (
+          </main>
+        ) : accounts.length === 0 ? (
+          <main className="container px-4 py-6 md:py-10 space-y-8">
             <ErrorBoundary>
-              {accounts.length === 0 ? (
-                <EmptyState
-                  title={t('noAccounts') || 'No accounts available'}
-                  description={
-                    t('noAccountsDescription') ||
-                    'Please add an account to get started with transfers.'
-                  }
-                  action={
-                    <Button
-                      onClick={() => {
-                        console.log('Add account clicked')
-                      }}
-                    >
-                      {t('addAccount') || 'Add Account'}
-                    </Button>
-                  }
-                />
-              ) : (
-                <>
+              <EmptyState
+                title={t('noAccounts') || 'No accounts available'}
+                description={
+                  t('noAccountsDescription') ||
+                  'Please add an account to get started with transfers.'
+                }
+                action={
+                  <Button
+                    onClick={() => {
+                      console.log('Add account clicked')
+                    }}
+                  >
+                    {t('addAccount') || 'Add Account'}
+                  </Button>
+                }
+              />
+            </ErrorBoundary>
+          </main>
+        ) : (
+          <AppShell
+            nav={{
+              activeSurface,
+              onSurfaceChange: setActiveSurface,
+              onNewTransaction: openNewTransaction,
+              onTransfer: openTransfer
+            }}
+          >
+            {/* Desktop surfaces (lg+): sidebar-driven, no tab switching. */}
+            <div className="hidden lg:block space-y-8">
+              {activeSurface === 'overview' && (
+                <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
                   <ErrorBoundary>
                     <DailyBudgetStatus
                       budget={budget}
@@ -91,25 +172,118 @@ export default function DailyBudgetApp() {
                       remainingDays={getRemainingDays()}
                     />
                   </ErrorBoundary>
-
-                  <Navbar
+                  <div className="min-w-0 space-y-6">
+                    <ErrorBoundary>
+                      <AccountsList
+                        accounts={accounts}
+                        budget={budget}
+                        {...desktopAccountActions}
+                      />
+                    </ErrorBoundary>
+                    <ErrorBoundary>
+                      <RecentTransactions
+                        accounts={accounts}
+                        transactions={transactions}
+                      />
+                    </ErrorBoundary>
+                  </div>
+                </div>
+              )}
+              {activeSurface === 'accounts' && (
+                <ErrorBoundary>
+                  <AccountsList
                     accounts={accounts}
                     budget={budget}
-                    transactions={transactions}
-                    addAccount={addAccount}
-                    updateAccount={updateAccount}
-                    deleteAccount={deleteAccount}
-                    addTransaction={addTransaction}
-                    updateTransaction={updateTransaction}
-                    removeTransaction={removeTransaction}
-                    transferFunds={transferFunds}
+                    {...desktopAccountActions}
                   />
-                </>
+                </ErrorBoundary>
               )}
-            </ErrorBoundary>
-          )}
-        </main>
+              {activeSurface === 'history' && (
+                <ErrorBoundary>
+                  <TransactionHistory
+                    accounts={accounts}
+                    transactions={transactions}
+                    removeTransaction={removeTransaction}
+                  />
+                </ErrorBoundary>
+              )}
+              {activeSurface === 'sync' && (
+                <ErrorBoundary>
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-semibold tracking-tight">
+                      {t('sidebar.sync')}
+                    </h2>
+                    <SyncSection />
+                  </div>
+                </ErrorBoundary>
+              )}
+              {activeSurface === 'settings' && (
+                <ErrorBoundary>
+                  <div className="max-w-2xl space-y-6">
+                    <h2 className="text-2xl font-semibold tracking-tight">
+                      {t('sidebar.settings')}
+                    </h2>
+                    <ConfigForm
+                      budget={budget}
+                      onUpdateConfig={updateConfig}
+                      onClearData={clearData}
+                    />
+                  </div>
+                </ErrorBoundary>
+              )}
+            </div>
+
+            {/* Mobile surfaces (below lg): status card + tab chrome, unchanged. */}
+            <div className="lg:hidden">
+              <div className="space-y-8">
+                <ErrorBoundary>
+                  <DailyBudgetStatus
+                    budget={budget}
+                    dailyAllowance={dailyAllowance}
+                    remainingToday={remainingToday}
+                    progress={progress}
+                    accounts={accounts}
+                    remainingDays={getRemainingDays()}
+                  />
+                </ErrorBoundary>
+
+                <Navbar
+                  accounts={accounts}
+                  budget={budget}
+                  transactions={transactions}
+                  activeTab={activeTab}
+                  onActiveTabChange={handleActiveTabChange}
+                  addAccount={addAccount}
+                  updateAccount={updateAccount}
+                  deleteAccount={deleteAccount}
+                  removeTransaction={removeTransaction}
+                  onAddTransactionRequest={openNewTransaction}
+                  onTransferRequest={openTransfer}
+                />
+              </div>
+            </div>
+          </AppShell>
+        )}
       </div>
+
+      {/* Modals hosted once, shared by the mobile chrome and desktop actions. */}
+      <TransactionModal
+        isOpen={isTransactionModalOpen}
+        onClose={closeTransactionModal}
+        onAddTransaction={addTransaction}
+        onUpdateTransaction={updateTransaction}
+        accounts={accounts}
+        remainingToday={remainingToday}
+        transaction={editingTransaction}
+        key={editingTransaction?.id}
+      />
+
+      <TransferModal
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+        onTransfer={transferFunds}
+        accounts={accounts}
+      />
     </ErrorBoundary>
   )
 }
