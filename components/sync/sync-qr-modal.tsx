@@ -1,14 +1,19 @@
 'use client'
 
-// QR export / import modal (Opción B — self-contained claim). Device A issues
-// an anonymous claim with its snapshot bytes and renders it as a QR token;
-// device B scans the QR (or types the token) and imports the snapshot after
-// confirming a preview. No syncCode/SYNC_TOKEN: the claim token is the only
-// capability. Port to the localStorage era: the snapshot is the UTF-8 text of
-// the `daily-budget-data` blob and the import apply goes through the existing
-// lib/import-json pipeline (applyJsonImport → useBudget().replaceAll), which
-// persists to localStorage and updates React state instantly. Camera scanning
-// is progressive enhancement over the manual path.
+// QR export / import flow (Opción B — self-contained claim). Device A issues an
+// anonymous claim with its snapshot bytes and renders it as a QR token; device B
+// scans the QR (or types the token) and imports the snapshot after confirming a
+// preview. No syncCode/SYNC_TOKEN: the claim token is the only capability. The
+// snapshot is the UTF-8 text of the `daily-budget-data` blob and the import apply
+// goes through the existing lib/import-json pipeline (applyClaimToState →
+// useBudget().replaceAll), which persists to localStorage and updates React
+// state instantly. Camera scanning is progressive enhancement over the manual
+// path.
+//
+// Layout: `SyncPanel` owns the whole flow and is dialog-agnostic; `SyncQrModal`
+// is a thin Radix Dialog wrapper around it. Keeping both in one module lets the
+// same UI render inline as a desktop section (issue #10, Phase F) without
+// duplicating logic or moving hundreds of lines between files.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { Check, Copy } from 'lucide-react'
@@ -47,6 +52,20 @@ export interface SyncQrModalProps {
   mode: 'export' | 'import'
   onOpenChange: (open: boolean) => void
   initialToken?: string // optional claim token to prefill (sync-import deep link)
+}
+
+export interface SyncPanelProps {
+  mode: 'export' | 'import'
+  /**
+   * Gates the claim-issue and camera-scan effects. The modal passes its `open`
+   * flag; the desktop section keeps it permanently true and remounts the panel
+   * (via key) to reset the flow.
+   */
+  active: boolean
+  /** Flow finished: claim invalidated (export) or snapshot applied (import). */
+  onDone: () => void
+  /** Optional claim token to prefill (sync-import deep link). */
+  initialToken?: string
 }
 
 type IssuedClaim = Extract<ClaimIssueResult, { ok: true }>
@@ -104,12 +123,7 @@ export function ClaimCountdown({
   return <span data-testid="claim-countdown">{t('sync.export.countdown', { mm, ss })}</span>
 }
 
-export function SyncQrModal({
-  open,
-  mode,
-  onOpenChange,
-  initialToken,
-}: SyncQrModalProps) {
+export function SyncPanel({ mode, active, onDone, initialToken }: SyncPanelProps) {
   const { t } = useLanguage()
   const { toast } = useToast()
   const {
@@ -196,19 +210,19 @@ export function SyncQrModal({
 
   // Export: issue an anonymous claim with the local snapshot bytes on open.
   useEffect(() => {
-    if (!open || mode !== 'export' || claim || exportError) return
-    let active = true
+    if (!active || mode !== 'export' || claim || exportError) return
+    let activeClaim = true
     void (async () => {
       const bytes = new TextEncoder().encode(snapshotText)
       const res = await createClaim(bytes)
-      if (!active) return
+      if (!activeClaim) return
       if (res.ok) setClaim(res)
       else setExportError(res.error)
     })()
     return () => {
-      active = false
+      activeClaim = false
     }
-  }, [open, mode, claim, exportError, snapshotText])
+  }, [active, mode, claim, exportError, snapshotText])
 
   // Export: render the QR once the claim is issued.
   useEffect(() => {
@@ -227,24 +241,24 @@ export function SyncQrModal({
   // inside the effect (react-hooks/set-state-in-effect); the timeout handle also
   // allows canceling a pending import on unmount.
   useEffect(() => {
-    if (!open || mode !== 'import' || !initialToken) return
+    if (!active || mode !== 'import' || !initialToken) return
     const tkn = initialToken.trim()
     if (!tkn) return
     const id = window.setTimeout(() => void runImport(tkn), 0)
     return () => window.clearTimeout(id)
-  }, [open, mode, initialToken, runImport])
+  }, [active, mode, initialToken, runImport])
 
   // Import: imperatively mount the html5-qrcode scanner on the camera tab.
   useEffect(() => {
-    if (!open || mode !== 'import' || tab !== 'camera' || preview !== null) return
-    let active = true
+    if (!active || mode !== 'import' || tab !== 'camera' || preview !== null) return
+    let mounted = true
 
     void (async () => {
       try {
         const mod = await import('html5-qrcode')
         const Html5QrcodeClass = mod.Html5Qrcode
         const instance = new Html5QrcodeClass(cameraId)
-        if (!active) return
+        if (!mounted) return
         scannerRef.current = instance
 
         const onSuccess = (decodedText: string): void => {
@@ -282,7 +296,7 @@ export function SyncQrModal({
       } catch {
         // Camera is progressive enhancement: falling back to the manual tab is
         // the safe path.
-        if (active) {
+        if (mounted) {
           scannerRef.current = null
           setTab('manual')
         }
@@ -290,7 +304,7 @@ export function SyncQrModal({
     })()
 
     return () => {
-      active = false
+      mounted = false
       const current = scannerRef.current
       scannerRef.current = null
       if (!current) return
@@ -313,7 +327,7 @@ export function SyncQrModal({
         // scanner nunca corrió → no hay nada que limpiar
       }
     }
-  }, [open, mode, tab, preview, cameraId, runImport])
+  }, [active, mode, tab, preview, cameraId, runImport])
 
   function handleConfirm(): void {
     if (!preview || busy) return
@@ -322,7 +336,7 @@ export function SyncQrModal({
       applyClaimToState(preview.data, replaceAll)
       setBusy(false)
       toast({ title: t('syncSynced') })
-      onOpenChange(false)
+      onDone()
     } catch (err) {
       const importErr = (err as { error?: ImportFileError })?.error
       setImportError(importErr ?? 'unexpected')
@@ -339,7 +353,7 @@ export function SyncQrModal({
       // Invalidation is best-effort: the claim TTL replaces it.
     }
     setBusy(false)
-    onOpenChange(false)
+    onDone()
   }
 
   async function copyClaimToken(): Promise<void> {
@@ -384,177 +398,188 @@ export function SyncQrModal({
 
   const modeLabel = preview?.preview.mode === 'daily' ? t('dailyMode') : t('trackMode')
 
+  return mode === 'export' ? (
+    <>
+      {exportError && (
+        <p
+          data-testid="sync-export-error"
+          className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {errorLabel(exportError)}
+        </p>
+      )}
+
+      {!exportError && claim && !expired && (
+        <div className="flex flex-col items-center gap-3">
+          <canvas
+            ref={canvasRef}
+            data-testid="claim-qr-canvas"
+            className="rounded-md border bg-white p-2"
+            aria-label={t('sync.export.title')}
+          />
+          <ClaimCountdown expiryMs={claim.expiresAt} onExpire={() => setExpired(true)} />
+        </div>
+      )}
+
+      {!exportError && claim && expired && (
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          {t('sync.claim.error_expired')}
+        </p>
+      )}
+
+      {!exportError && claim && (
+        <>
+          <div>
+            <label
+              htmlFor="sync-claim-token"
+              className="text-sm font-medium text-muted-foreground"
+            >
+              {t('sync.export.claim_token_label')}
+            </label>
+            <div className="mt-1 flex gap-2">
+              <Input
+                ref={tokenInputRef}
+                id="sync-claim-token"
+                data-testid="claim-token"
+                value={claim.token}
+                readOnly
+                className="flex-1 font-mono text-xs"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => void copyClaimToken()}
+                disabled={busy}
+                aria-label={t('sync.export.copy_token')}
+                data-testid="claim-token-copy-button"
+              >
+                {tokenCopied ? <Check className="text-green-600" /> : <Copy />}
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => void handleDone()} disabled={busy}>
+              {t('sync.export.done')}
+            </Button>
+          </DialogFooter>
+        </>
+      )}
+    </>
+  ) : (
+    <>
+      {preview ? (
+        <div data-testid="claim-preview" className="space-y-1 rounded-md border p-4">
+          <p className="font-medium">{t('sync.import.preview_title')}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('sync.import.preview_date', {
+              date: new Date(preview.data.createdAt).toLocaleString(),
+            })}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t('importPreviewAccounts')}: {preview.preview.accounts}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t('importPreviewTransactions')}: {preview.preview.transactions}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t('importPreviewMode')}: {modeLabel}
+          </p>
+          <p className="text-xs font-mono text-muted-foreground">
+            {t('sync.import.preview_hash', { shortHash: preview.data.hash.slice(0, 8) })}
+          </p>
+        </div>
+      ) : (
+        <Tabs value={tab} onValueChange={(v) => setTab(v as 'camera' | 'manual')}>
+          <TabsList className="grid w-full grid-cols-2">
+            {hasCamera && (
+              <TabsTrigger value="camera">{t('sync.import.camera_tab')}</TabsTrigger>
+            )}
+            <TabsTrigger value="manual">{t('sync.import.manual_tab')}</TabsTrigger>
+          </TabsList>
+
+          {hasCamera && (
+            <TabsContent value="camera">
+              <div
+                id={cameraId}
+                className="h-64 w-full overflow-hidden rounded-md border"
+              />
+            </TabsContent>
+          )}
+
+          <TabsContent value="manual">
+            <div className="flex gap-2">
+              <Input
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={t('sync.import.enter_token')}
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                disabled={busy}
+                data-testid="claim-token-input"
+              />
+              <Button
+                onClick={() => void runImport(token)}
+                disabled={busy || !token.trim()}
+                data-testid="claim-import-button"
+              >
+                {t('sync.import.button')}
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {importError && (
+        <p
+          data-testid="sync-import-error"
+          className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {errorLabel(importError)}
+        </p>
+      )}
+
+      <DialogFooter>
+        {preview && (
+          <>
+            <Button variant="outline" onClick={() => setPreview(null)} disabled={busy}>
+              {t('sync.import.cancel')}
+            </Button>
+            <Button onClick={handleConfirm} disabled={busy}>
+              {t('sync.import.confirm')}
+            </Button>
+          </>
+        )}
+      </DialogFooter>
+    </>
+  )
+}
+
+export function SyncQrModal({ open, mode, onOpenChange, initialToken }: SyncQrModalProps) {
+  const { t } = useLanguage()
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        {mode === 'export' ? (
-          <>
-            <DialogHeader>
-              <DialogTitle>{t('sync.export.title')}</DialogTitle>
-            </DialogHeader>
+        <DialogHeader>
+          <DialogTitle>
+            {mode === 'export' ? t('sync.export.title') : t('sync.import.title')}
+          </DialogTitle>
+          {mode === 'import' && (
+            <DialogDescription className="sr-only">
+              {t('sync.import.title')}
+            </DialogDescription>
+          )}
+        </DialogHeader>
 
-            {exportError && (
-              <p
-                data-testid="sync-export-error"
-                className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
-              >
-                {errorLabel(exportError)}
-              </p>
-            )}
-
-            {!exportError && claim && !expired && (
-              <div className="flex flex-col items-center gap-3">
-                <canvas
-                  ref={canvasRef}
-                  data-testid="claim-qr-canvas"
-                  className="rounded-md border bg-white p-2"
-                  aria-label={t('sync.export.title')}
-                />
-                <ClaimCountdown expiryMs={claim.expiresAt} onExpire={() => setExpired(true)} />
-              </div>
-            )}
-
-            {!exportError && claim && expired && (
-              <p className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                {t('sync.claim.error_expired')}
-              </p>
-            )}
-
-            {!exportError && claim && (
-              <>
-                <div>
-                  <label
-                    htmlFor="sync-claim-token"
-                    className="text-sm font-medium text-muted-foreground"
-                  >
-                    {t('sync.export.claim_token_label')}
-                  </label>
-                  <div className="mt-1 flex gap-2">
-                    <Input
-                      ref={tokenInputRef}
-                      id="sync-claim-token"
-                      data-testid="claim-token"
-                      value={claim.token}
-                      readOnly
-                      className="flex-1 font-mono text-xs"
-                      onFocus={(e) => e.currentTarget.select()}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => void copyClaimToken()}
-                      disabled={busy}
-                      aria-label={t('sync.export.copy_token')}
-                      data-testid="claim-token-copy-button"
-                    >
-                      {tokenCopied ? <Check className="text-green-600" /> : <Copy />}
-                    </Button>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={() => void handleDone()} disabled={busy}>
-                    {t('sync.export.done')}
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>{t('sync.import.title')}</DialogTitle>
-              <DialogDescription className="sr-only">
-                {t('sync.import.title')}
-              </DialogDescription>
-            </DialogHeader>
-
-            {preview ? (
-              <div data-testid="claim-preview" className="space-y-1 rounded-md border p-4">
-                <p className="font-medium">{t('sync.import.preview_title')}</p>
-                <p className="text-sm text-muted-foreground">
-                  {t('sync.import.preview_date', {
-                    date: new Date(preview.data.createdAt).toLocaleString(),
-                  })}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('importPreviewAccounts')}: {preview.preview.accounts}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('importPreviewTransactions')}: {preview.preview.transactions}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('importPreviewMode')}: {modeLabel}
-                </p>
-                <p className="text-xs font-mono text-muted-foreground">
-                  {t('sync.import.preview_hash', { shortHash: preview.data.hash.slice(0, 8) })}
-                </p>
-              </div>
-            ) : (
-              <Tabs value={tab} onValueChange={(v) => setTab(v as 'camera' | 'manual')}>
-                <TabsList className="grid w-full grid-cols-2">
-                  {hasCamera && (
-                    <TabsTrigger value="camera">{t('sync.import.camera_tab')}</TabsTrigger>
-                  )}
-                  <TabsTrigger value="manual">{t('sync.import.manual_tab')}</TabsTrigger>
-                </TabsList>
-
-                {hasCamera && (
-                  <TabsContent value="camera">
-                    <div
-                      id={cameraId}
-                      className="h-64 w-full overflow-hidden rounded-md border"
-                    />
-                  </TabsContent>
-                )}
-
-                <TabsContent value="manual">
-                  <div className="flex gap-2">
-                    <Input
-                      value={token}
-                      onChange={(e) => setToken(e.target.value)}
-                      placeholder={t('sync.import.enter_token')}
-                      autoComplete="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                      disabled={busy}
-                      data-testid="claim-token-input"
-                    />
-                    <Button
-                      onClick={() => void runImport(token)}
-                      disabled={busy || !token.trim()}
-                      data-testid="claim-import-button"
-                    >
-                      {t('sync.import.button')}
-                    </Button>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            )}
-
-            {importError && (
-              <p
-                data-testid="sync-import-error"
-                className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
-              >
-                {errorLabel(importError)}
-              </p>
-            )}
-
-            <DialogFooter>
-              {preview && (
-                <>
-                  <Button variant="outline" onClick={() => setPreview(null)} disabled={busy}>
-                    {t('sync.import.cancel')}
-                  </Button>
-                  <Button onClick={handleConfirm} disabled={busy}>
-                    {t('sync.import.confirm')}
-                  </Button>
-                </>
-              )}
-            </DialogFooter>
-          </>
-        )}
+        <SyncPanel
+          mode={mode}
+          active={open}
+          initialToken={initialToken}
+          onDone={() => onOpenChange(false)}
+        />
       </DialogContent>
     </Dialog>
   )

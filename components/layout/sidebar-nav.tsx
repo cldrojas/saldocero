@@ -1,6 +1,15 @@
 'use client'
 
-import { ArrowRightLeft, History, Home, Plus, Wallet, type LucideIcon } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  History,
+  Home,
+  Plus,
+  RefreshCw,
+  Settings,
+  Wallet,
+  type LucideIcon
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useLanguage } from '@/contexts/language-context'
 import type { AppSurface } from '@/types'
@@ -14,8 +23,6 @@ export interface SidebarNavProps {
   onTransfer: () => void
 }
 
-// Sync and Settings entries land with their desktop surfaces
-// (ConfigForm / SyncQrModal are wired in a later phase of issue #10).
 const NAV_ITEMS: ReadonlyArray<{
   surface: AppSurface
   labelKey: string
@@ -25,6 +32,8 @@ const NAV_ITEMS: ReadonlyArray<{
   { surface: 'overview', labelKey: 'sidebar.overview', icon: Home, shortcut: '1' },
   { surface: 'accounts', labelKey: 'accounts', icon: Wallet, shortcut: '2' },
   { surface: 'history', labelKey: 'history', icon: History, shortcut: '3' },
+  { surface: 'sync', labelKey: 'sidebar.sync', icon: RefreshCw, shortcut: '4' },
+  { surface: 'settings', labelKey: 'sidebar.settings', icon: Settings, shortcut: '5' },
 ]
 
 const ACTION_SHORTCUTS: ReadonlyArray<{
