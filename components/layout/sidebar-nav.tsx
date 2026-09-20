@@ -36,8 +36,13 @@ const NAV_ITEMS: ReadonlyArray<{
   { surface: 'settings', labelKey: 'sidebar.settings', icon: Settings, shortcut: '5' },
 ]
 
-const NEW_TRANSACTION_SHORTCUT = 'n'
-const TRANSFER_SHORTCUT = 't'
+const ACTION_SHORTCUTS: ReadonlyArray<{
+  key: string
+  shortcut: string
+}> = [
+  { key: 'n', shortcut: 'n' },
+  { key: 't', shortcut: 't' },
+]
 
 /**
  * Desktop sidebar navigation + always-visible actions (issue #10, Phases A & C).
@@ -78,8 +83,8 @@ export function SidebarNav({
         <Button
           type="button"
           className="w-full justify-start gap-3 px-3"
-          aria-keyshortcuts={NEW_TRANSACTION_SHORTCUT}
-          title={`${t('sidebar.newTransaction')} (${NEW_TRANSACTION_SHORTCUT})`}
+          aria-keyshortcuts={ACTION_SHORTCUTS[0].shortcut}
+          title={`${t('sidebar.newTransaction')} (n)`}
           onClick={onNewTransaction}
         >
           <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -89,8 +94,8 @@ export function SidebarNav({
           type="button"
           variant="outline"
           className="w-full justify-start gap-3 px-3"
-          aria-keyshortcuts={TRANSFER_SHORTCUT}
-          title={`${t('transfer')} (${TRANSFER_SHORTCUT})`}
+          aria-keyshortcuts={ACTION_SHORTCUTS[1].shortcut}
+          title={`${t('transfer')} (t)`}
           onClick={onTransfer}
         >
           <ArrowRightLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
