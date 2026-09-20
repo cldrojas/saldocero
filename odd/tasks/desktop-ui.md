@@ -163,7 +163,7 @@ T6 cubre resto de copy desktop + tests + README.
   blueprint decía `1..4`, pero hay 5 secciones; los atajos cubren 1..5. Claves
   `sidebar.sync` y `sidebar.settings` es/en. Gates: tsc ✓, vitest 116/116 ✓,
   lint 0 errors, `next build` ✓ (SSR de las secciones nuevas). Diff del slice:
-  +344/−205 = 549 (sobre las 400) → requiere `size:exception`. → commit `2475652`
++344/−205 = 549 (sobre las 400) → requiere `size:exception`. → commit `2475652`
 ## Progreso slice 5 (rama `feat/desktop-ui-tests`)
 - 2026-09-19: T6 implementado. Auditoría de i18n: todas las claves usadas por los
   componentes nuevos existen en es/en (los `labelKey` del sidebar son
@@ -199,3 +199,8 @@ T6 cubre resto de copy desktop + tests + README.
      Además varios de esos specs asumen chrome mobile al viewport default (1280).
 - Gates: tsc ✓, vitest 131/131 ✓, lint 0 errors (5 warnings pre-existentes),
   next build ✓, Playwright `desktop-shell.spec.ts` 5/5 ✓.
+
+## Progreso cierre (tracker `feat/desktop-ui`)
+- 2026-09-20: tracker sincronizado con `feat/desktop-ui-sync` (contenido final de
+  #75). PRs de la cadena #70/#71/#72/#73/#75 mergeados; sin PR de tracker a main
+  hasta este cierre.
