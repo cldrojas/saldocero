@@ -50,7 +50,7 @@ export default function Navbar({
   return (
     <ErrorBoundary>
       {/* Mobile tab chrome. Hidden at lg: the desktop sidebar drives the same state. */}
-      <div className="lg:hidden">
+      <div className="lg:hidden" data-testid="mobile-chrome">
         <Tabs
           value={activeTab}
           onValueChange={(value) => onActiveTabChange(value as MobileTab)}
@@ -116,6 +116,7 @@ export default function Navbar({
         className="fixed bottom-6 right-6 rounded-full h-14 w-14 shadow-lg z-50 lg:hidden"
         onClick={onAddTransactionRequest}
         title={t('addExpense')}
+        data-testid="mobile-fab-add-transaction"
       >
         <Plus className="h-6 w-6" />
       </Button>

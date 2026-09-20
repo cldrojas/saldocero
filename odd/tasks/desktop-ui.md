@@ -86,7 +86,8 @@ T6 cubre resto de copy desktop + tests + README.
   `DailyBudgetStatus` + `AccountsList` + `RecentTransactions` (helper de formato de
   fecha compartido extraído de `transaction-history.tsx`).
 - [x] T3 — Acciones + hotkeys (Fase C): acciones "Nueva transacción"/"Transferir"
-  en sidebar; FAB oculto a `lg:`; `hooks/use-hotkeys.ts` (`n` `t` `1..4`) con guard
+  en sidebar; FAB oculto a `lg:`; `hooks/use-hotkeys.ts` (`n` `t` `1..5` — el
+  blueprint decía `1..4`, hay 5 secciones) con guard
   de viewport y tooltips/aria para descubrimiento.
 - [x] T4 — Modales en desktop (Fase D): verificado sin cambio 2026-09-19 —
   `DialogContent`/`AlertDialogContent` ya son `w-full max-w-lg` centrados y
@@ -94,19 +95,25 @@ T6 cubre resto de copy desktop + tests + README.
 - [x] T5 — Sync + Ajustes en sidebar (Fase F): secciones que renderizan
   `ConfigForm` (ajustes) y `SyncPanel` (sync, extraído de `SyncQrModal`) en el
   content area a `lg:`, sin hamburguesa; mobile intacto.
-- [ ] T6 — i18n + tests + docs (Fase G): claves es/en (sidebar, copy desktop);
+- [x] T6 — i18n + tests + docs (Fase G): claves es/en (sidebar, copy desktop);
   unit tests `app-shell` + `use-hotkeys`; specs Playwright 1280×800 (shell,
-  acciones, sin FAB) sin romper los specs mobile existentes; README estructura.
+  acciones, sin FAB); README estructura.
 
 ## Criterios de aceptación (de #10)
-- [ ] A ≥1024px la sidebar + overview muestran presupuesto, cuentas y movimientos
-  recientes sin abrir tabs.
-- [ ] Sin FAB a `lg:`; "Nueva transacción" y "Transferir" siempre visibles en la sidebar.
-- [ ] Tabla de historial usable en 1280×800 sin scroll horizontal.
-- [ ] Todos los flujos mobile intactos por debajo de 1024px.
-- [ ] Atajos de teclado funcionan y son descubribles (tooltip/aria).
-- [ ] Claves i18n nuevas presentes en `es` y `en`.
-- [ ] Specs Playwright desktop nuevos pasan; specs mobile existentes siguen verdes.
+- [x] A ≥1024px la sidebar + overview muestran presupuesto, cuentas y movimientos
+  recientes sin abrir tabs. (sonda a 1280 + `desktop-shell.spec.ts`)
+- [x] Sin FAB a `lg:`; "Nueva transacción" y "Transferir" siempre visibles en la sidebar.
+- [ ] Tabla de historial usable en 1280×800 sin scroll horizontal. **NO verificado**:
+  requiere medir `scrollWidth` de la tabla a 1280×800 (no hay asserts de eso todavía).
+- [ ] Todos los flujos mobile intactos por debajo de 1024px. **Parcial**: verificado
+  que el chrome mobile aparece a 390×844 y desaparece a 1280; los flujos mobile
+  completos no están cubiertos porque la suite E2E está rota desde antes (ver
+  hallazgo 3 del slice 5).
+- [x] Atajos de teclado funcionan y son descubribles (tooltip/aria).
+- [x] Claves i18n nuevas presentes en `es` y `en`.
+- [ ] Specs Playwright desktop nuevos pasan (`5/5` ✓); specs mobile existentes siguen
+  verdes: **no**, están en rojo desde antes por el helper `test-utils.ts` roto (no
+  por esta cadena). Repararlos es un PR aparte.
 
 ## Progreso
 - 2026-09-19: ciclo iniciado. Mapa de anatomía completo (shell en `page.tsx`,
@@ -156,4 +163,44 @@ T6 cubre resto de copy desktop + tests + README.
   blueprint decía `1..4`, pero hay 5 secciones; los atajos cubren 1..5. Claves
   `sidebar.sync` y `sidebar.settings` es/en. Gates: tsc ✓, vitest 116/116 ✓,
   lint 0 errors, `next build` ✓ (SSR de las secciones nuevas). Diff del slice:
-  +344/−205 = 549 (sobre las 400) → requiere `size:exception`. → commit `2475652`
++344/−205 = 549 (sobre las 400) → requiere `size:exception`. → commit `2475652`
+## Progreso slice 5 (rama `feat/desktop-ui-tests`)
+- 2026-09-19: T6 implementado. Auditoría de i18n: todas las claves usadas por los
+  componentes nuevos existen en es/en (los `labelKey` del sidebar son
+  `sidebar.overview|sync|settings`, `accounts`, `history`). Único literal sin
+  traducir: `aria-label="Main navigation"`, consistente con la convención
+  existente (`header-menu.tsx` usa "Open menu" / "Menu options" en inglés).
+- Tests unitarios nuevos: `tests/unit/app-shell.test.tsx` (6 tests: 5 secciones en
+  orden, `aria-keyshortcuts` 1-5, `aria-current` en una sola, callbacks sin estado
+  propio, acciones visibles y cableadas) y `tests/unit/use-hotkeys.test.tsx`
+  (9 tests: disparo, case-insensitive, viewport <1024, guardas de input/textarea/
+  contenteditable, modificadores, repeat, tecla sin handler, handlers frescos sin
+  re-suscripción, cleanup al desmontar). Suite: 116 → **131 tests**.
+- Tests E2E nuevos: `tests/ui/desktop-shell.spec.ts` (5 tests a 1280×800: 5
+  secciones y chrome mobile oculto, cambio de superficie sin recargar, sync con
+  sus dos modos, atajos 1/5/n/t, y paridad mobile a 390×844). 5/5 en verde.
+  No clickea "Compartir vía QR" a propósito: eso pegaría contra `/api/sync/claim`.
+- Hallazgos de test (documentados en los specs):
+  1. `tests/ui/e2e-constants.ts` lee credenciales en el import → sin `.env.e2e`
+     **rompe la colección** de cualquier spec que lo importe (por eso
+     `sync-qr.spec.ts` no se puede ni colectar acá). El spec nuevo evita ese
+     import y define su helper de idioma local.
+  2. `waitForSelector('h1')` no prueba hidratación: la app renderiza el SetupForm
+     (cuyo input tiene `autoFocus`) antes de hidratar y el `h1` existe en ambos
+     estados. Los atajos no disparaban porque el foco estaba en ese input; el
+     `beforeEach` ahora espera la sidebar (sólo existe hidratada).
+  3. **Deuda pre-existente, NO regresión**: `ensureConfiguredState`/
+     `ensureSetupState` (`tests/ui/test-utils.ts`, intacto en este ciclo) llaman
+     `page.reload()` sin `goto` previo → la página queda en `about:blank` y
+     `waitForAppReady` espera 30s al vacío. Verificado con sonda: `reload()` sin
+     navegación = `about:blank` / 0 `h1`. Por eso `transfer-form.spec.ts` (13) y
+     parte de `config-form.spec.ts` (9) / `language-selector.spec.ts` (3) están en
+     rojo desde antes de este ciclo; `test-utils.ts` no fue tocado por esta rama.
+     Además varios de esos specs asumen chrome mobile al viewport default (1280).
+- Gates: tsc ✓, vitest 131/131 ✓, lint 0 errors (5 warnings pre-existentes),
+  next build ✓, Playwright `desktop-shell.spec.ts` 5/5 ✓.
+
+## Progreso cierre (tracker `feat/desktop-ui`)
+- 2026-09-20: tracker sincronizado con `feat/desktop-ui-sync` (contenido final de
+  #75). PRs de la cadena #70/#71/#72/#73/#75 mergeados; sin PR de tracker a main
+  hasta este cierre.
