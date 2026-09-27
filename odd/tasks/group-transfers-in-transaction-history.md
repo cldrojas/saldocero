@@ -139,35 +139,35 @@ declara los tipos a mano (`:24`) y hay que agregar el campo ahí también.
 ## Tarea
 
 ### T1 — Vínculo `transferId` + fila agrupada (con i18n y tests)
-- [ ] `types/index.ts`: `transferId?: string` en `Transaction`.
-- [ ] `hooks/use-budget.tsx`: `transferFunds` escribe el id en ambas patas; `replaceAll`
+- [x] `types/index.ts`: `transferId?: string` en `Transaction`.
+- [x] `hooks/use-budget.tsx`: `transferFunds` escribe el id en ambas patas; `replaceAll`
       propaga el campo; `removeTransfer(transferId, refund)` atómico; export en el return.
-- [ ] `components/transaction-history.tsx`: prop `removeTransfer`, grouping a filas, filtro
+- [x] `components/transaction-history.tsx`: prop `removeTransfer`, grouping a filas, filtro
       por cuenta sobre filas, fila de transferencia en tabla y cards, flecha con icono,
       delete del grupo.
-- [ ] `components/navbar.tsx`: `removeTransfer` en `NavbarProps`, destructuring y paso.
-- [ ] `app/page.tsx`: `removeTransfer` del hook y paso a `TransactionHistory`.
-- [ ] `contexts/language-context.tsx`: `transferBetweenAccounts` y `unknownAccount` en `en`
+- [x] `components/navbar.tsx`: `removeTransfer` en `NavbarProps`, destructuring y paso.
+- [x] `app/page.tsx`: `removeTransfer` del hook y paso a `TransactionHistory`.
+- [x] `contexts/language-context.tsx`: `transferBetweenAccounts` y `unknownAccount` en `en`
       y `es`.
-- [ ] `tests/unit/transaction-history.test.tsx`: casos de transferencia.
-- [ ] `tests/unit/use-budget.test.tsx`: `transferFunds` escribe el mismo id en las dos
+- [x] `tests/unit/transaction-history.test.tsx`: casos de transferencia.
+- [x] `tests/unit/use-budget.test.tsx`: `transferFunds` escribe el mismo id en las dos
       patas; `removeTransfer` borra las dos y la segunda pata no reaparece.
 
 ## Criterios de aceptación
-- [ ] Una transferencia creada desde el modal se ve como **una** fila: "Transfer between
+- [x] Una transferencia creada desde el modal se ve como **una** fila: "Transfer between
       accounts", monto, fecha, y `Origen -> Destino` con flecha de icono.
-- [ ] Un gasto y un ingreso normales siguen viéndose exactamente como antes.
-- [ ] El monto de la transferencia **no** se pinta en rojo.
-- [ ] Con nota del usuario, la fila muestra esa nota; sin nota, el rótulo genérico.
-- [ ] El filtro por cuenta muestra la transferencia si matchea **cualquiera** de sus dos
+- [x] Un gasto y un ingreso normales siguen viéndose exactamente como antes.
+- [x] El monto de la transferencia **no** se pinta en rojo.
+- [x] Con nota del usuario, la fila muestra esa nota; sin nota, el rótulo genérico.
+- [x] El filtro por cuenta muestra la transferencia si matchea **cualquiera** de sus dos
       cuentas, y la fila muestra las dos.
-- [ ] Borrar la fila agrupada borra **las dos** patas de una sola vez (regresión del
+- [x] Borrar la fila agrupada borra **las dos** patas de una sola vez (regresión del
       closure: la segunda pata no reaparece).
-- [ ] Un grupo con `transferId` pero != 2 patas se degrada a filas simples, no a una fila
+- [x] Un grupo con `transferId` pero != 2 patas se degrada a filas simples, no a una fila
       con contraparte inventada.
-- [ ] Importar un backup conserva el grouping.
-- [ ] Las claves nuevas existen en `en` y `es`; ninguna renderiza la clave cruda.
-- [ ] `pnpm test` verde, `pnpm lint` sin errores nuevos, `pnpm exec tsc --noEmit` limpio.
+- [x] Importar un backup conserva el grouping.
+- [x] Las claves nuevas existen en `en` y `es`; ninguna renderiza la clave cruda.
+- [x] `pnpm test` verde, `pnpm lint` sin errores nuevos, `pnpm exec tsc --noEmit` limpio.
 
 ## Verificación
 - `pnpm exec vitest run`
@@ -178,7 +178,138 @@ declara los tipos a mano (`:24`) y hay que agregar el campo ahí también.
 
 ## Progreso
 
-_(pendiente)_
+### T1 — CERRADA
+Commit `743a77f` en `feat/group-transfers-in-history` (base `12b82c9`).
+10 archivos, 948 líneas cambiadas. `size:exception` aprobada por el maintainer: el
+vínculo se graba en `transferFunds` y se lee en el listado, así que un PR que haga
+solo una de las dos partes está roto por diseño y no es divisible en slices útiles.
+
+### Evidencia de verificación
+- `pnpm exec vitest run`: **160/160 en 14 archivos** (140 antes, +20 nuevos).
+  El hook pre-commit de husky corre la suite completa: verde en el commit.
+- `pnpm lint`: **0 errores**, 5 warnings, los mismos preexistentes
+  (`account-modal.tsx:48`, `use-budget.tsx:85/145/189`, `use-toast.ts:21`).
+  `removeTransfer` no agregó un `exhaustive-deps` nuevo: es una función simple, no
+  un `useCallback`.
+- `pnpm exec tsc --noEmit`: **exit 0**.
+
+### Mutación verificada por el padre (no por el writer)
+- Se eliminó el anclaje de la fila al primer leg → **4 tests fallan**.
+- Se forzó emitir toda fila de transferencia (`if (true) continue`) → **8 tests fallan**.
+El mecanismo de grouping está realmente cubierto, no decorativo.
+
+### Revisión R3 Reliability — ejecutada por el padre, NO por la lente despachada
+El dispatch de la lente falló con `OpenCode's free tier can only be used from within
+OpenCode` (mismo bloqueo de host registrado en el ciclo anterior). A pedido explícito
+del usuario la ejecuté yo, con probes medidos. **La transacción nativa quedó intacta y
+sin aprobar**: no se fabricó un `review.capture-result`.
+
+- **R3-1 (WARNING) — `removeTransfer` deja `remainingToday`/`progress` intactos.**
+  Medido: con un gasto real de 200 y una transferencia de 300, al borrar la
+  transferencia con refund el balance de `daily` vuelve 500 → 800 pero
+  `remainingToday` sigue en 0 y `progress` en 0: la plata que vuelve no se ve en el
+  allowance del día. La guarda `todayNet !== 0` vuelve esa rama **código muerto** para
+  toda transferencia bien formada (la neta siempre es 0), así que el código *parece*
+  manejar el allowance cuando estructuralmente no puede.
+  **No es regresión:** el camino preexistente `removeTransaction` sobre una pata da
+  `remainingToday` 300 y `progress` **300%**, o sea peor y visiblemente absurdo.
+  Clasificado preexistente, pero la afirmación del doc de que la elección es
+  "correcta" está sin evidencia y su consecuencia observable es inconsistente.
+
+- **R3-2 (WARNING) — clave de React duplicada si un `id` importado equivale a un
+  `transferId`.** Medido: React emite el warning de "same key". Alcanzable por
+  `replaceAll`: `validateImportJson` no valida unicidad de ids ni colisión con
+  `transferId`. Consecuencia: reconciliación de filas incorrecta.
+  Fix barato: namespacear las claves de render (`tx:` vs `tr:`).
+
+- **R3-3 (SUGGESTION) — falta cubrir el orden.** Ningún test afirma la posición de una
+  fila agrupada entre filas simples, ni un grupo cuyas patas traen **fechas distintas**
+  (alcanzable por import). Verificado a mano: esa fila se ancla en la pata más reciente
+  y ordena bien. El comportamiento es correcto pero no está probado.
+
+### Lo que los tests sí compran
+- `never colors a transfer amount as a loss` tiene aserción de control (la fila de Rent
+  SÍ está en rojo): no es un selector vacuo.
+- El test de regresión del closure documenta el mecanismo real y afirma la pata
+  **opuesta** a la intuición ingenua.
+- El test de import afirma `'transferId' in plain === false`: fija el spread condicional,
+  no solo el valor.
+- Los tests de degradación de 1 y 3 patas fijan el contrato de "no inventar contraparte".
+
+### Consistencia viva, fuera de alcance
+`RecentTransactions` sigue mostrando las dos patas: overview e historial ahora no
+coinciden en el número de movimientos. Documentado, no corregido.
+
+## Deuda técnica conocida — NO tocado en este change
+
+Decidido por el maintainer: documentar, no arreglar. Cada ítem registra la
+medición que lo prueba, el alcance real y qué NO cubre. Ninguno es un blocker.
+
+### D1 — El refund de una transferencia no mueve el allowance del día
+- **Síntoma:** con un gasto real de 200 y una transferencia de 300, al borrar la
+  transferencia con refund el balance de `daily` vuelve 500 → 800 pero
+  `remainingToday` sigue en 0 y `progress` en 0. La plata que vuelve no aparece en
+  el allowance del día.
+- **Causa raíz:** la guarda `todayNet !== 0` en `removeTransfer` es **código muerto**
+  para toda transferencia bien formada, porque la neta de las dos patas siempre es 0.
+  La rama del allowance nunca se ejecuta. El código *lee* como si manejara el
+  allowance cuando estructuralmente no puede.
+- **Por qué no lo arregla este change:** definir la contabilidad correcta del
+  allowance es cambio de comportamiento de producto, no refactor. Afecta también al
+  camino preexistente.
+- **Preexistente, no regresión:** `removeTransaction` sobre una sola pata da
+  `remainingToday` 300 y `progress` **300%**. Antes estaba peor y visiblemente absurdo.
+  Arreglar solo `removeTransfer` dejaría los dos caminos con reglas distintas.
+- **Refactor subyacente sin tocar:** `calculateDailyAllowance` solo corre en el efecto
+  de cambio de día, así que un cambio en `transactions` sin cambio en `accounts`
+  deja `usedToday`/`progress` desactualizados.
+- **Cómo reproducir:** el bloque de measurement de R3-1 arriba.
+
+### D2 — Clave de React duplicada si un `id` importado equivale a un `transferId`
+- **Síntoma:** React emite el warning de "same key". Confirmado con captura de
+  `console.error`.
+- **Causa raíz:** `buildHistoryRows` usa `transaction.id` como clave de fila simple y
+  `transferId` como clave de fila agrupada, sin namespace. `replaceAll` acepta ids del
+  archivo y `validateImportJson` **no valida unicidad de ids** ni colisión con
+  `transferId`.
+- **Consecuencia:** reconciliación de filas incorrecta; React puede reusar el contenido
+  de otra fila entre renders.
+- **Fix barato si se decide:** namespacear las claves de render (`tx:` vs `tr:`), o
+  derivar la clave de fila de la posición en la lista ordenada.
+- **Alcance real:** solo alcanzable por import o estado local manipulado. No lo
+  produce la UI normal.
+
+### D3 — Orden de fila agrupada sin cobertura
+- **Síntoma:** ningún test afirma la posición de una fila agrupada entre filas
+  simples, ni un grupo cuyas dos patas traen **fechas distintas**.
+- **Por qué importa:** un grupo con patas de fechas distintas decide qué fecha muestra
+  la fila. Es alcanzable por import, porque `validateImportJson` no valida coherencia
+  de fechas entre patas del mismo `transferId`.
+- **Verificado a mano, no por test:** esa fila se ancla en la pata más reciente y
+  ordena correctamente entre las simples.
+- **Lo que sí está cubierto:** el mecanismo de grouping, por mutación. Quitar el
+  anclaje al primer leg → 4 tests fallan. Forzar que nunca se emitan filas de
+  transferencia → 8 tests fallan.
+
+### D4 — Overview e historial no coinciden en el número de movimientos
+- `RecentTransactions` sigue mostrando las dos patas de una transferencia, así que
+  el conteo de movimientos del overview y el del historial ahora difieren.
+- Fuera de alcance explícito desde el diseño original. Consecuencia visible, no
+  corrupción de datos.
+
+### Deuda preexistente ajena a este change
+- `components/transactions-list.tsx` (`TransactionList`) está muerto: no lo monta
+  `app/page.tsx` ni `navbar.tsx`, solo sus propios tests.
+- E2E no ejecutable en este entorno: `playwright.config.ts` está en `.gitignore` y su
+  `webServer` lanza `next build`, que falla con ENOSPC (disco lleno). Toda la
+  cobertura desktop/mobile es jsdom, no navegador real.
 
 ## Próximo paso
-_(pendiente)_
+1. **Decidido:** D1 y D2 quedan como deuda documentada, no se arreglan en este
+   change. Los cuatro ítems están en "Deuda técnica conocida" arriba.
+2. La transacción nativa `review-7ded6a98e8523c31` sigue **intacta y reanudable**. No
+   quemó autoridad: no hubo captura, y la revisión se hizo a mano por petición
+   explícita del usuario. Quien la retome necesita despachar la lente
+   `review-reliability` contra el mismo candidate tree `d4274235`.
+3. Push y PR son decisión del usuario. Si se abre el PR, el reviewer debería leer
+   primero la sección de deuda: D1 y D2 son conocidas y aceptadas, no omisiones.
