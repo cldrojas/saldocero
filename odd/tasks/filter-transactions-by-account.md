@@ -96,7 +96,75 @@ tenés datos cuando sí tenés, solo que ninguno es de esa cuenta.
 
 ## Progreso
 
-_(se completa al cerrar T1)_
+### T1 — CERRADA
+- [x] `components/transaction-history.tsx`: estado `accountFilter`, `Select` en el
+      `CardHeader`, recorte de `sortedTransactions`, segundo empty state.
+- [x] `contexts/language-context.tsx`: `filterByAccount`, `allAccounts`,
+      `noTransactionsInAccount` en `en` y `es`.
+- [x] `tests/unit/transaction-history.test.tsx`: 9 tests, archivo nuevo.
+
+Commits (rama `feat/filter-transactions-by-account`, base `208bd85`):
+- `d1a57e7` — `feat(history): filter transactions by account` (unidad de trabajo)
+- `efebbd5` — `chore: ignore local .codegraph index` (higiene de tooling)
+- `<responsive>` — ajuste de layout del `CardHeader` (aportado por el usuario): pasa a
+  `flex-col items-center` y recién a `sm:` se vuelve `flex-row justify-between`. En
+  viewports angostos (≈320px) una fila fija con un `Select` de `11rem` más el título
+  quedaba apretada. Reverificado: 140/140, `tsc` exit 0, lint 0 errores.
+
+### Criterios de aceptación — todos verificados
+- [x] `allAccounts` reproduce la lista actual, sin regresión desktop ni mobile
+- [x] Elegir una cuenta deja solo sus transacciones
+- [x] Cambiar de cuenta actualiza sin remount
+- [x] Filtro activo sin coincidencias → mensaje de "sin transacciones en esta cuenta",
+      NO "Aún no hay transacciones"
+- [x] Claves nuevas en `en` y `es`; ninguna renderiza la clave cruda
+- [x] `pnpm test` verde, `pnpm lint` sin errores nuevos, `tsc --noEmit` limpio
+
+### Evidencia de verificación
+- `pnpm exec vitest run`: **140/140 en 14 archivos** (incluye 9 nuevos). El hook
+  pre-commit de husky corre la suite completa: verde en ambos commits.
+- `pnpm lint`: **0 errores**, 5 warnings, todos preexistentes en
+  `account-modal.tsx` / `use-budget.tsx` / `use-toast.ts`. Ninguno en archivos tocados.
+- `pnpm exec tsc --noEmit`: **exit 0**.
+
+### Mutación verificada (el test no es decorativo)
+El test de colisión de id se validó por mutación: con el centinela hardcodeado
+`'all'` (derivación eliminada) el test
+`does not confuse an account named "All"` **falla**; restaurada la derivación, pasa.
+Confirma que el hole era real y que el test lo cubre. También se comprobó que la
+protección depende de la **derivación** y no del literal: con candidato inicial
+`'all'` + loop, el test igual pasa.
+
+### Revisión RDD — ABIERTA, BLOQUEADA POR EL ENTORNO
+- Assessment: `gentle-ai.review-assessment/v1` → **medium**, `executable_change`.
+  Contract: en medium el candidate es el PR slice; se cerró por fin de feature.
+- Transacción congelada: lineage `review-891f3657880b2f45`,
+  `candidate_tree 1017e0e`, budget de corrección 171, **1 lente** (`review-reliability`).
+- Consentimiento del usuario: `granted` (relay completo del envelope consent/v3).
+- **Pendiente:** la lente R3 no pudo despacharse. El host responde
+  `OpenCode's free tier can only be used from within OpenCode` — no es un defecto de
+  Gentle AI sino del runtime cliente, así que no procede handoff. La captura NO se
+  fabricó a mano.
+- Estado: la transacción sigue **intacta y reanudable**, ofreciendo el mismo slot
+  (`review-reliability`, order 0, `subject-hash sha256:ce7d00a9…`). Resolver el
+  despacho de subagentes y relanzar el STATUS ligado retoma el review sin perder
+  la autoridad.
+
+### Fuera de alcance, registrado
+- **Bug preexistente, NO tocado:** `t('unknownAccount')` se usa en
+  `transactions-list.tsx`, `transaction-history.tsx` y `recent-transactions.tsx`, pero
+  la clave **no existe** en el diccionario. Como `t` hace
+  `translations[language][key] || key` (`contexts/language-context.tsx:505`), hoy
+  renderiza el texto crudo `unknownAccount`. Solo afecta a transacciones cuya cuenta
+  fue borrada. Hallazgo, no permiso de ampliar alcance.
+- **Deuda técnica, NO tocado:** `components/transactions-list.tsx` (`TransactionList`)
+  está muerto; no lo monta nadie, solo sus tests.
 
 ## Próximo paso
-T1 → assessment RDD → commit de unidad de trabajo.
+1. Resolver el límite de despacho de subagentes del runtime, o decidir delivery sin
+   review — la entrega es decisión del usuario bajo política del repo.
+2. Si se retoma el review: correr el STATUS ligado al lineage
+   `review-891f3657880b2f45` y despachar la lente desde un host que pueda.
+3. Este bloque de progreso quedó **sin commitear a propósito**: cambiar bytes del
+   working tree invalidaría el `candidate_tree` congelado y dejaría el review sin
+   reanudabilidad.

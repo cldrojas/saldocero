@@ -90,7 +90,7 @@ export function TransactionHistory({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+      <CardHeader className="flex flex-col items-center gap-4 space-y-0 sm:flex-row sm:justify-between">
         <div className="min-w-0">
           <CardTitle>{t('transactionHistory')}</CardTitle>
           <CardDescription>{t('transactionDescription')}</CardDescription>
