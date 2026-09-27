@@ -178,6 +178,11 @@ export const translations = {
     filterByAccount: 'Filter by account',
     allAccounts: 'All accounts',
     noTransactionsInAccount: 'No transactions in this account',
+    transferBetweenAccounts: 'Transfer between accounts',
+    // The transfer row uses this as the fallback when a leg points at an account
+    // the user has since deleted. The key was missing from both dictionaries, so
+    // `t` fell back to rendering the raw key on screen.
+    unknownAccount: 'Unknown account',
 
     // Toasts
     expenseAdded: 'Expense Added',
@@ -404,6 +409,11 @@ export const translations = {
     filterByAccount: 'Filtrar por cuenta',
     allAccounts: 'Todas las cuentas',
     noTransactionsInAccount: 'No hay transacciones en esta cuenta',
+    transferBetweenAccounts: 'Transferencia entre cuentas',
+    // Fallback de la fila de transferencia cuando una pata apunta a una cuenta
+    // que el usuario ya borró. Faltaba en el diccionario: `t` renderizaba la
+    // clave cruda.
+    unknownAccount: 'Cuenta desconocida',
 
     // Toasts
     expenseAdded: 'Gasto registrado',

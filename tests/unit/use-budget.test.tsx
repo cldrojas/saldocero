@@ -455,4 +455,125 @@ describe('useBudget hook', () => {
       }).not.toThrow()
     })
   })
+
+  describe('transfers: linked legs and atomic removal', () => {
+    // Sets up a 1000 daily budget and moves 300 to savings. Returns the two
+    // legs of the resulting transfer, resolved by account instead of by position
+    // so the assertions do not depend on insert order.
+    function transfer300() {
+      const { result } = renderHook(() => useBudget())
+
+      act(() => {
+        result.current.setupBudget({
+          startAmount: 1000 as any,
+          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        })
+      })
+
+      act(() => {
+        result.current.transferFunds({
+          amount: 300 as any,
+          fromAccount: 'daily',
+          toAccount: 'savings'
+        })
+      })
+
+      const legs = result.current.transactions.filter((t) => t.transferId !== undefined)
+      return {
+        result,
+        legs,
+        out: legs.find((t) => t.account === 'daily')!,
+        into: legs.find((t) => t.account === 'savings')!
+      }
+    }
+
+    it('writes the same transferId on both legs', () => {
+      const { result, legs, out, into } = transfer300()
+
+      expect(legs).toHaveLength(2)
+      expect(out.transferId).toBeDefined()
+      expect(into.transferId).toBe(out.transferId)
+      // The legs stay two distinct records; only the pairing is shared.
+      expect(out.id).not.toBe(into.id)
+      expect(out.amount).toBe(-300)
+      expect(into.amount).toBe(300)
+      // The initial deposit is not part of any transfer.
+      expect(result.current.transactions).toHaveLength(3)
+      expect(result.current.transactions[2].transferId).toBeUndefined()
+    })
+
+    it('removeTransfer drops both legs in a single call', () => {
+      const { result, out, into } = transfer300()
+      const transferId = out.transferId!
+
+      act(() => {
+        result.current.removeTransfer(transferId)
+      })
+
+      expect(result.current.transactions.some((t) => t.id === out.id)).toBe(false)
+      expect(result.current.transactions.some((t) => t.id === into.id)).toBe(false)
+      // Only the initial deposit survives.
+      expect(result.current.transactions).toHaveLength(1)
+    })
+
+    it('regression: two removeTransaction calls in one tick resurrect the first leg', () => {
+      // This is the bug that makes `removeTransfer` necessary. Both calls read
+      // `transactions` from the SAME render closure, so the second
+      // `setTransactions` is computed from the pre-delete array and overwrites
+      // the first one wholesale: the leg deleted by the FIRST call comes back.
+      const { result, out, into } = transfer300()
+
+      act(() => {
+        result.current.removeTransaction(into.id)
+        result.current.removeTransaction(out.id)
+      })
+
+      expect(result.current.transactions.some((t) => t.id === into.id)).toBe(true)
+      expect(result.current.transactions.some((t) => t.id === out.id)).toBe(false)
+    })
+
+    it('removeTransfer with refund restores both account balances', () => {
+      const { result, out } = transfer300()
+      const transferId = out.transferId!
+
+      expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(700)
+      expect(result.current.accounts.find((a) => a.id === 'savings')!.balance).toBe(300)
+      const remainingBefore = result.current.remainingToday
+
+      act(() => {
+        result.current.removeTransfer(transferId, true)
+      })
+
+      expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(1000)
+      expect(result.current.accounts.find((a) => a.id === 'savings')!.balance).toBe(0)
+      // The legs cancel: moving money between your own accounts is not spending,
+      // so the daily allowance must not move either.
+      expect(result.current.remainingToday).toBe(remainingBefore)
+    })
+
+    it('removeTransfer without refund keeps the balances but still drops both legs', () => {
+      const { result, out } = transfer300()
+      const transferId = out.transferId!
+
+      act(() => {
+        result.current.removeTransfer(transferId, false)
+      })
+
+      expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(700)
+      expect(result.current.accounts.find((a) => a.id === 'savings')!.balance).toBe(300)
+      expect(result.current.transactions).toHaveLength(1)
+    })
+
+    it('removeTransfer with an unknown id changes nothing', () => {
+      const { result } = transfer300()
+
+      act(() => {
+        result.current.removeTransfer('not-a-transfer')
+      })
+
+      expect(result.current.transactions).toHaveLength(3)
+      expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(700)
+      expect(result.current.accounts.find((a) => a.id === 'savings')!.balance).toBe(300)
+    })
+  })
 })

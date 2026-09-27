@@ -407,6 +407,50 @@ export function useBudget() {
     }
   }
 
+  // Remove both legs of a transfer as ONE unit.
+  //
+  // `removeTransaction` reads `transactions` from the render closure, so
+  // calling it twice in a row to drop a pair computes the second
+  // `setTransactions` from the same stale array and RESURRECTS the leg the
+  // first call just deleted. A grouped history row deletes as one unit, so the
+  // group needs its own atomic API: one filter, one account update, one daily
+  // adjustment.
+  const removeTransfer = (transferId: string, refund: boolean = true) => {
+    const legs = transactions.filter((t) => t.transferId === transferId)
+    // Unknown id: nothing to remove, and nothing to refund.
+    if (legs.length === 0) return
+
+    if (refund) {
+      // Exactly the arithmetic of `removeTransaction` (`balance - amount`),
+      // applied per leg, but collapsed into a single account update.
+      setAccounts(accounts.map((acc) => {
+        const legSum = legs
+          .filter((leg) => leg.account === acc.id)
+          .reduce((sum, leg) => sum + leg.amount, 0)
+
+        if (legSum === 0) return acc
+        return { ...acc, balance: toInt(acc.balance - legSum) ?? 0 as Int }
+      }))
+
+      // The daily allowance moves ONCE, by the net sum of today's legs. For a
+      // well-formed transfer that net is 0 (+X on one account, -X on the other),
+      // which is the correct outcome: moving money between your own accounts is
+      // not spending. Skipping the update on a zero net also avoids writing a
+      // division by a zero `dailyAllowance` in track mode, which would poison
+      // `progress` with NaN.
+      const todayNet = legs
+        .filter((leg) => isToday(leg.date))
+        .reduce((sum, leg) => sum + leg.amount, 0)
+
+      if (todayNet !== 0) {
+        setRemainingToday(remainingToday - todayNet)
+        setProgress(((remainingToday - todayNet) / dailyAllowance) * 100)
+      }
+    }
+
+    setTransactions(transactions.filter((t) => t.transferId !== transferId))
+  }
+
   const updateTransaction = (updatedTransaction: Transaction) => {
     // Find the original transaction
     const originalTransaction = transactions.find(t => t.id === updatedTransaction.id)
@@ -585,6 +629,14 @@ export function useBudget() {
     toAccount: string
     description?: string
   }) => {
+    // One id shared by both legs. This is what makes the pair recognizable as
+    // one transfer later on, and it has to be recorded HERE at write time:
+    // `type: 'transfer'` is not an identifier (the daily auto-save and the
+    // budget adjustment use that type for single-leg movements), and guessing
+    // the pairing at render time (same day + same amount + "Transfer to/from"
+    // text) would cross-match two same-amount transfers on the same day.
+    const transferId = uuidv4()
+
     // Create withdrawal transaction
     const withdrawalTransaction: Transaction = {
       id: uuidv4(),
@@ -593,7 +645,8 @@ export function useBudget() {
       amount: toInt(-amount) ?? 0 as Int,
       description:
         description || 'Transfer to ' + accounts.find((a) => a.id === toAccount)?.name,
-      account: fromAccount
+      account: fromAccount,
+      transferId
     }
 
     // Create deposit transaction
@@ -605,7 +658,8 @@ export function useBudget() {
       description:
         description ||
         'Transfer from ' + accounts.find((a) => a.id === fromAccount)?.name,
-      account: toAccount
+      account: toAccount,
+      transferId
     }
 
     // Update account balances
@@ -765,6 +819,13 @@ export function useBudget() {
         description: tx.description ?? '',
         account: tx.account,
         date: Number.isNaN(rawDate.getTime()) ? today : rawDate,
+        // The leg pairing has to survive the import: without it a backup would
+        // split every transfer back into the two orphan rows this change exists
+        // to remove. The conditional spread keeps the key ABSENT (rather than
+        // `transferId: undefined`) so transactions that were never half of a
+        // transfer still serialize to the exact same bytes as before — same
+        // pattern already used for the account `hidden` flag above.
+        ...(tx.transferId !== undefined ? { transferId: tx.transferId } : {}),
       }
     })
 
@@ -826,6 +887,7 @@ export function useBudget() {
     deleteAccount,
     getRemainingDays,
     removeTransaction,
+    removeTransfer,
     replaceAll,
     setupBudget,
     setLastCheckedDay,
