@@ -50,6 +50,29 @@ function rowOf(match: HTMLElement) {
   return match.closest('tr, article') as HTMLElement
 }
 
+// The desktop table is the ORDERED surface: one <tr> per row, first cell the
+// date, second the description. The mobile cards repeat the same data, so
+// reading the table keeps order assertions about order and not about the fact
+// that each row is rendered on two surfaces. `getAllByRole('row')` would work
+// too, but a direct query keeps the header row out of the picture.
+function desktopRows() {
+  return Array.from(document.querySelectorAll('tbody tr')).map((tr) => {
+    const cells = tr.querySelectorAll('td')
+    return {
+      date: cells[0]?.textContent?.trim() ?? '',
+      description: cells[1]?.textContent?.trim() ?? ''
+    }
+  })
+}
+
+// Row descriptions in render order, for the cases where the rendered date is not
+// what is under test. Dates are left out on purpose: the shared `transfer`
+// fixture parses its dates as UTC, so its label is timezone-dependent, and a test
+// that pins it would only be asserting the runner's timezone.
+function desktopDescriptions() {
+  return desktopRows().map((row) => row.description)
+}
+
 async function selectAccount(name: string) {
   fireEvent.click(screen.getByRole('combobox', { name: 'Filter by account' }))
   const option = await screen.findByRole('option', { name })
@@ -359,3 +382,134 @@ describe('TransactionHistory grouped transfers', () => {
     expect(removeTransfer).not.toHaveBeenCalled()
   })
 })
+
+// Shapes only an import can produce. `replaceAll` keeps the id and the date each
+// leg had in the file, and `validateImportJson` checks neither id uniqueness
+// nor date coherence between the legs of one `transferId`.
+describe('TransactionHistory import-shaped transfers', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.localStorage.setItem('language', 'en')
+  })
+
+  it('shows the anchor leg date, so a grouped row never reads older than the row above it', () => {
+    // The NEGATIVE leg is the older one, so the row's position (anchored on the
+    // first-seen = most recent leg) and the date it used to display (taken from
+    // the negative leg) disagreed: a row labelled "10 Jan" rendered above a row
+    // labelled "12 Jan".
+    //
+    // Local-time construction, not `new Date('2026-01-15')`: the ISO form is
+    // parsed as UTC midnight and would render as the previous day west of
+    // Greenwich, making the expected label timezone-dependent.
+    const divergentDates: Transaction[] = [
+      {
+        id: 'div-in',
+        type: 'income',
+        amount: 300 as Int,
+        description: 'Transfer from Daily Budget',
+        account: 'savings',
+        date: new Date(2026, 0, 15),
+        transferId: 'tx-div'
+      },
+      {
+        id: 'div-out',
+        type: 'expense',
+        amount: -300 as Int,
+        description: 'Transfer to Savings',
+        account: 'daily',
+        date: new Date(2026, 0, 10),
+        transferId: 'tx-div'
+      }
+    ]
+
+    renderHistory({
+      transactions: [
+        ...divergentDates,
+        {
+          id: 'noise',
+          type: 'expense',
+          amount: -50 as Int,
+          description: 'Noise',
+          account: 'daily',
+          date: new Date(2026, 0, 12)
+        }
+      ]
+    })
+
+    // Sorted most-recent-first: the group anchors on its 15 Jan leg and the
+    // plain expense lands between it and the now-hidden 10 Jan leg. The whole
+    // list is asserted so a row reappearing anywhere is caught too.
+    expect(desktopRows()).toEqual([
+      { date: '15 Jan', description: 'Transfer between accounts' },
+      { date: '12 Jan', description: 'Noise' }
+    ])
+
+    // The displayed date is the anchor leg's, not the outgoing leg's.
+    const grouped = rowOf(screen.getAllByText('Transfer between accounts')[0])
+    expect(grouped.textContent).toContain('15 Jan')
+    expect(grouped.textContent).not.toContain('10 Jan')
+  })
+
+  it('renders a group once when both legs share the same id', () => {
+    // Anchoring the group on leg identity cannot work here: with one shared id
+    // BOTH iterations pass an `id === legs[0].id` check, so the row was pushed
+    // twice and its content was duplicated on screen.
+    const sharedIds = transfer.map((leg) => ({ ...leg, id: 'duplicated' }))
+
+    renderHistory({ transactions: sharedIds })
+
+    // Exactly one row, counted in the rendered output rather than inferred from
+    // a console warning.
+    expect(desktopDescriptions()).toEqual(['Transfer between accounts'])
+    // One per surface (table + card), so the mobile list is not duplicated
+    // either.
+    expect(rowCount('Transfer between accounts')).toBe(2)
+    // And no leg escapes as a plain row.
+    expect(rowCount('Transfer to Savings')).toBe(0)
+    expect(rowCount('Transfer from Daily Budget')).toBe(0)
+  })
+
+  it('never collides a plain row key with a group row key', () => {
+    // Both surfaces render one list, so a plain row and a group row share a key
+    // scope. An imported transaction whose `id` equals another transaction's
+    // `transferId` made the two keys literally equal.
+    const colliding: Transaction[] = [
+      ...transfer.map((leg) => ({ ...leg, transferId: 'tx-1' })),
+      {
+        id: 'tx-1',
+        type: 'expense',
+        amount: -42 as Int,
+        description: 'Collides',
+        account: 'daily',
+        date: new Date(2026, 0, 11)
+      }
+    ]
+
+    const consoleErrors: unknown[][] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      consoleErrors.push(args)
+    })
+
+    try {
+      renderHistory({ transactions: colliding })
+    } finally {
+      spy.mockRestore()
+    }
+
+    expect(duplicateKeyWarnings(consoleErrors)).toEqual([])
+    // Control: both rows really are on screen, so the assertion above is about
+    // the keys and not about a list that rendered nothing.
+    expect(desktopDescriptions()).toEqual([
+      'Collides',
+      'Transfer between accounts'
+    ])
+  })
+})
+
+// React reports a duplicate key through console.error. Match on the key itself
+// so the assertion survives React changing the surrounding warning copy.
+function duplicateKeyWarnings(consoleErrors: unknown[][]) {
+  return consoleErrors.filter(([first]) =>
+    typeof first === 'string' && first.toLowerCase().includes('same key')
+  )
+}

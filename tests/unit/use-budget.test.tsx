@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useBudget } from '@/hooks/use-budget'
+import type { LegacyImportData } from '@/lib/import-json-types'
+import type { Int } from '@/types'
 
 // Mock localStorage
 const localStorageMock = {
@@ -574,6 +576,150 @@ describe('useBudget hook', () => {
       expect(result.current.transactions).toHaveLength(3)
       expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(700)
       expect(result.current.accounts.find((a) => a.id === 'savings')!.balance).toBe(300)
+    })
+  })
+
+  describe('removeTransfer never moves the daily allowance', () => {
+    // Import (backup / QR sync) is the only path that can produce a transfer
+    // whose legs carry different dates: `transferFunds` stamps BOTH legs with
+    // `today`, while `replaceAll` keeps whatever date each leg had in the file.
+    //
+    // The removed code netted the legs dated today and moved
+    // `remainingToday`/`progress` whenever that net was non-zero, so deleting
+    // such a group credited back an amount that was never debited anywhere. The
+    // numbers below are picked so the old result is unmistakable: daily mode
+    // turned 0/0 into 300 and 342.86%, and track mode divided by a zero
+    // `dailyAllowance` and stored `Infinity`.
+    const todayIso = () => new Date().toISOString()
+    const yesterdayIso = () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+    /**
+     * A budget whose day starts fully spent (`remainingToday` 0, `progress` 0:
+     * `dailyAllowance` 87.5 = 700 over 8 days, and 87.5 spent today), plus a
+     * transfer whose legs disagree about the day — the OUTGOING leg is today,
+     * the incoming one yesterday, so the net of "today's legs" is a lone -300.
+     */
+    function divergentLegDatesImport(mode: 'daily' | 'track') {
+      return {
+        budget: {
+          startAmount: 1000,
+          mode,
+          // `null`, not a missing key: track mode is the budget with no end date.
+          endDate: mode === 'daily' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null
+        },
+        accounts: [
+          { id: 'daily', name: 'Daily Budget', type: 'daily', balance: 700, icon: 'wallet' },
+          { id: 'savings', name: 'Savings', type: 'savings', balance: 0, icon: 'piggybank' }
+        ],
+        transactions: [
+          {
+            id: 'spent',
+            type: 'expense',
+            amount: 87.5,
+            description: 'Groceries',
+            account: 'daily',
+            date: todayIso()
+          },
+          {
+            id: 'leg-out',
+            type: 'expense',
+            amount: -300,
+            description: 'Transfer to Savings',
+            account: 'daily',
+            date: todayIso(),
+            transferId: 'tx-div'
+          },
+          {
+            id: 'leg-in',
+            type: 'income',
+            amount: 300,
+            description: 'Transfer from Daily Budget',
+            account: 'savings',
+            date: yesterdayIso(),
+            transferId: 'tx-div'
+          }
+        ]
+      } satisfies LegacyImportData
+    }
+
+    // The blob the save effect last wrote, read back the way a reload would.
+    function persistedBlob() {
+      const calls = localStorageMock.setItem.mock.calls
+      const [key, value] = calls[calls.length - 1]
+      expect(key).toBe('daily-budget-data')
+      return JSON.parse(value as string) as {
+        remainingToday: number
+        progress: number | null
+      }
+    }
+
+    it('leaves remainingToday and progress untouched in daily mode', () => {
+      const { result } = renderHook(() => useBudget())
+
+      act(() => {
+        result.current.replaceAll(divergentLegDatesImport('daily'))
+      })
+
+      const remainingBefore = result.current.remainingToday
+      const progressBefore = result.current.progress
+      expect(remainingBefore).toBe(0)
+      expect(progressBefore).toBe(0)
+
+      act(() => {
+        result.current.removeTransfer('tx-div', true)
+      })
+
+      // Control: the group really was deleted and the refund really ran, so this
+      // is not a vacuous pass. The daily account is the meaningful side: it was
+      // debited 300 by the outgoing leg and the refund gave it back.
+      expect(result.current.transactions.some((t) => t.transferId === 'tx-div')).toBe(false)
+      expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(1000 as Int)
+
+      expect(result.current.remainingToday).toBe(remainingBefore)
+      expect(result.current.progress).toBe(progressBefore)
+      // The old code credited the net of today's legs back: 0 + 300.
+      expect(result.current.remainingToday).not.toBe(300)
+      expect(result.current.progress).not.toBeCloseTo(342.86, 2)
+
+      const blob = persistedBlob()
+      expect(blob.remainingToday).toBe(remainingBefore)
+      expect(blob.progress).toBe(progressBefore)
+    })
+
+    it('never persists a non-finite progress in track mode', () => {
+      const { result } = renderHook(() => useBudget())
+
+      act(() => {
+        result.current.replaceAll(divergentLegDatesImport('track'))
+      })
+
+      const remainingBefore = result.current.remainingToday
+      const progressBefore = result.current.progress
+      // Track mode has no daily allowance, which is what made the old
+      // division-by-zero reachable.
+      expect(result.current.dailyAllowance).toBe(0)
+      expect(progressBefore).toBe(100)
+
+      act(() => {
+        result.current.removeTransfer('tx-div', true)
+      })
+
+      // Control: the group really was deleted.
+      expect(result.current.transactions.some((t) => t.transferId === 'tx-div')).toBe(false)
+
+      expect(result.current.remainingToday).toBe(remainingBefore)
+      expect(result.current.progress).toBe(progressBefore)
+      expect(Number.isFinite(result.current.progress)).toBe(true)
+      expect(Number.isNaN(result.current.progress)).toBe(false)
+
+      const blob = persistedBlob()
+      expect(blob.remainingToday).toBe(remainingBefore)
+      // `Infinity` serializes to `null`, and this blob is exactly what the QR
+      // sync panel ships to the other device, so the persisted value is the one
+      // that matters.
+      expect(blob.progress).not.toBeNull()
+      expect(blob.progress).toBe(progressBefore)
+      expect(Number.isFinite(blob.progress)).toBe(true)
     })
   })
 })
