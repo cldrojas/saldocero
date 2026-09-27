@@ -362,4 +362,41 @@ describe('Integración: useBudget().replaceAll → estado + blob de localStorage
       type: 'income',
     })
   })
+
+  it('preserva el transferId de las dos patas de una transferencia', () => {
+    // Sin propagar el pairing, importar un backup partiría cada transferencia
+    // de nuevo en las dos filas huérfanas que el historial agrupa.
+    const withTransfer: LegacyImportData = {
+      ...trackImport,
+      transactions: [
+        { id: 'leg-out', type: 'expense', amount: -300, description: 'Transfer to Ahorros', account: 'daily', date: isoDaysFromNow(-1), transferId: 'tx-1' },
+        { id: 'leg-in', type: 'income', amount: 300, description: 'Transfer from Diario', account: 'daily', date: isoDaysFromNow(-1), transferId: 'tx-1' },
+        { id: 'plain', type: 'expense', amount: -10, description: 'Café', account: 'daily', date: isoDaysFromNow(-1) },
+      ],
+    }
+
+    const { result } = renderHook(() => useBudget())
+
+    act(() => {
+      result.current.replaceAll(withTransfer)
+    })
+
+    expect(result.current.transactions[0].transferId).toBe('tx-1')
+    expect(result.current.transactions[1].transferId).toBe('tx-1')
+
+    // Una transacción que nunca fue pata de transferencia NO puede ensuciarse
+    // con `transferId: undefined`: la clave se omite, no se escribe en null.
+    const plain = result.current.transactions[2]
+    expect(plain.transferId).toBeUndefined()
+    expect('transferId' in plain).toBe(false)
+
+    // El blob persistido también lo lleva: sin esto, el siguiente import
+    // (o un simple reload) volvería a partir la fila.
+    const blob = JSON.parse(store.get(STORAGE_KEY)!) as {
+      transactions: Array<Record<string, unknown>>
+    }
+    expect(blob.transactions[0].transferId).toBe('tx-1')
+    expect(blob.transactions[1].transferId).toBe('tx-1')
+    expect('transferId' in blob.transactions[2]).toBe(false)
+  })
 })

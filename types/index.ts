@@ -58,6 +58,11 @@ export type Transaction = {
   description: string
   account: string
   date: Date
+  // Shared by both legs of a user transfer, so the pair can be rendered and
+  // deleted as one entry. `type: 'transfer'` cannot play this role: the daily
+  // auto-save and the budget adjustment use that type for single-leg movements.
+  // Optional because transactions that are not half of a transfer have no id.
+  transferId?: string
 }
 
 export type TransactionType = 'expense' | 'transfer' | 'income' | 'adjustment'

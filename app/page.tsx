@@ -49,7 +49,8 @@ export default function DailyBudgetApp() {
     transferFunds,
     updateConfig,
     getRemainingDays,
-    removeTransaction
+    removeTransaction,
+    removeTransfer
   } = useBudget()
 
   // Active surface: desktop sidebar (lg+) and mobile tab bar drive the same content.
@@ -204,6 +205,7 @@ export default function DailyBudgetApp() {
                     accounts={accounts}
                     transactions={transactions}
                     removeTransaction={removeTransaction}
+                    removeTransfer={removeTransfer}
                   />
                 </ErrorBoundary>
               )}
@@ -257,6 +259,7 @@ export default function DailyBudgetApp() {
                   updateAccount={updateAccount}
                   deleteAccount={deleteAccount}
                   removeTransaction={removeTransaction}
+                  removeTransfer={removeTransfer}
                   onAddTransactionRequest={openNewTransaction}
                   onTransferRequest={openTransfer}
                 />

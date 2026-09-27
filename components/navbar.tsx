@@ -22,6 +22,7 @@ interface NavbarProps {
   updateAccount: (account: Account) => void
   deleteAccount: (accountId: string) => boolean
   removeTransaction: (transactionId: string, refund?: boolean) => void
+  removeTransfer: (transferId: string, refund?: boolean) => void
   onAddTransactionRequest: () => void
   onTransferRequest: () => void
 }
@@ -42,6 +43,7 @@ export default function Navbar({
   updateAccount,
   deleteAccount,
   removeTransaction,
+  removeTransfer,
   onAddTransactionRequest,
   onTransferRequest
 }: NavbarProps) {
@@ -104,6 +106,7 @@ export default function Navbar({
                 accounts={accounts}
                 transactions={transactions}
                 removeTransaction={removeTransaction}
+                removeTransfer={removeTransfer}
               />
             </ErrorBoundary>
           </TabsContent>

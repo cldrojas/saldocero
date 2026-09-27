@@ -30,6 +30,10 @@ export type LegacyImportTransaction = {
   description?: string
   account: string
   date?: string
+  // Leg pairing of a user transfer. Optional because backups taken before
+  // transfers were linked have none, and because most transactions are not
+  // half of a transfer at all.
+  transferId?: string
 }
 
 export type LegacyImportData = {

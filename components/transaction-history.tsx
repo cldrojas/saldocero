@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { ArrowRight, Trash2 } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -35,18 +35,126 @@ interface TransactionHistoryProps {
   accounts: Account[]
   transactions: Transaction[]
   removeTransaction: (transactionId: string, refund?: boolean) => void
+  // Required, not optional: a grouped row deletes BOTH legs at once, and two
+  // `removeTransaction` calls cannot do that (the second one would resurrect
+  // the first deleted leg). Making it required lets the compiler guarantee no
+  // mount surface is left without a way to delete a transfer.
+  removeTransfer: (transferId: string, refund?: boolean) => void
+}
+
+/**
+ * One rendered entry. A transfer is stored as TWO transactions, so it needs two
+ * shapes: `single` for everything that stands alone, `transfer` for a resolved
+ * pair. `from` is the outgoing (negative) leg and `to` the incoming one.
+ */
+type HistoryRow =
+  | { kind: 'single'; key: string; transaction: Transaction }
+  | {
+      kind: 'transfer'
+      key: string
+      transferId: string
+      from: Transaction
+      to: Transaction
+    }
+
+/**
+ * Groups the legs of every transfer into single rows, then applies the account
+ * filter to the RESULT.
+ *
+ * The order is load-bearing: a transfer touches two accounts, so filtering the
+ * transactions first would drop one leg and the row would forget the account it
+ * also moved money into — the history would silently under-report where the
+ * money went.
+ */
+function buildHistoryRows(
+  sortedTransactions: Transaction[],
+  accountFilter: string | null
+): HistoryRow[] {
+  // Legs per transfer id, in arrival (date-descending) order.
+  const legsByTransfer = new Map<string, Transaction[]>()
+  for (const transaction of sortedTransactions) {
+    if (transaction.transferId === undefined) continue
+    const legs = legsByTransfer.get(transaction.transferId)
+    if (legs) legs.push(transaction)
+    else legsByTransfer.set(transaction.transferId, [transaction])
+  }
+
+  const rows: HistoryRow[] = []
+
+  for (const transaction of sortedTransactions) {
+    if (transaction.transferId === undefined) {
+      rows.push({ kind: 'single', key: transaction.id, transaction })
+      continue
+    }
+
+    const legs = legsByTransfer.get(transaction.transferId)!
+
+    // EXACTLY two legs is a transfer. Any other count means corrupt data or a
+    // half-deleted transfer; rendering those as one row would mean inventing
+    // the counterpart that is not there, so each leg degrades to its own row.
+    if (legs.length !== 2) {
+      rows.push({ kind: 'single', key: transaction.id, transaction })
+      continue
+    }
+
+    // Anchor the row on the FIRST leg so rows keep the sort order of the list
+    // they came from, and the second leg never renders on its own.
+    if (transaction.id !== legs[0].id) continue
+
+    // `from` is the negative leg, `to` the positive one — the same sign
+    // convention the whole history already uses. If the signs cannot be told
+    // apart, arrival order decides, so the row still renders instead of
+    // collapsing or guessing an amount.
+    const [first, second] = legs
+    const from = first.amount < 0 ? first : second.amount < 0 ? second : first
+    const to = from === first ? second : first
+
+    rows.push({
+      kind: 'transfer',
+      key: transaction.transferId,
+      transferId: transaction.transferId,
+      from,
+      to
+    })
+  }
+
+  return rows.filter((row) => {
+    if (accountFilter === null) return true
+    if (row.kind === 'single') return row.transaction.account === accountFilter
+    // A transfer row shows when EITHER account matches, and then it shows BOTH.
+    // Hiding the far side would be a lie: the transfer really did touch it.
+    return row.from.account === accountFilter || row.to.account === accountFilter
+  })
+}
+
+/**
+ * Everything the table row and the mobile card need, resolved once so the two
+ * surfaces cannot drift apart. `accountTo` is only set for transfer rows.
+ */
+type RowView = {
+  key: string
+  date: Date
+  description: string
+  accountFrom: string
+  accountTo: string | null
+  amount: number
+  // Transfers are never negative-colored: the money stayed inside the app.
+  isNegative: boolean
+  transferId: string | null
 }
 
 export function TransactionHistory({
   accounts,
   transactions,
-  removeTransaction
+  removeTransaction,
+  removeTransfer
 }: TransactionHistoryProps) {
   const { t, language } = useLanguage()
   const { formatCurrency } = useCurrency()
   const [deleteTarget, setDeleteTarget] = useState<{
     transaction: Transaction
     accountName: string
+    transferId?: string
   } | null>(null)
   // `null` means "no account filter applied". Kept distinct from any account id so
   // the "all accounts" option can never be confused with a real account.
@@ -66,25 +174,94 @@ export function TransactionHistory({
   }, [accounts])
 
   // Sort transactions by date descending (most recent first)
-  const sortedTransactions = transactions.toSorted(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  const sortedTransactions = useMemo(
+    () => transactions.toSorted(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    ),
+    [transactions]
   )
 
-  // Filtering the already-sorted list keeps desktop (table) and mobile (cards)
-  // showing exactly the same set.
-  const visibleTransactions = accountFilter === null
-    ? sortedTransactions
-    : sortedTransactions.filter(
-      (transaction) => transaction.account === accountFilter
-    )
+  // Group FIRST, filter the resulting rows second. Filtering the already-grouped
+  // rows keeps desktop (table) and mobile (cards) showing exactly the same set.
+  const rows = useMemo(
+    () => buildHistoryRows(sortedTransactions, accountFilter),
+    [sortedTransactions, accountFilter]
+  )
+
+  // Account id → display name. Transfers can point at an account the user has
+  // since deleted, so this falls back to a label instead of rendering nothing.
+  const accountName = (accountId: string) =>
+    accounts.find((acc) => acc.id === accountId)?.name || t('unknownAccount')
+
+  const toRowView = (row: HistoryRow): RowView => {
+    if (row.kind === 'single') {
+      const { transaction } = row
+      return {
+        key: transaction.id,
+        date: transaction.date,
+        description: transaction.description || '—',
+        accountFrom: accountName(transaction.account),
+        accountTo: null,
+        amount: Math.abs(transaction.amount),
+        isNegative: transaction.amount < 0,
+        transferId: null
+      }
+    }
+
+    const { from, to } = row
+
+    // A user-supplied note is written to BOTH legs, so two equal non-empty
+    // descriptions mean the user wrote it. The generated defaults can never be
+    // equal ('Transfer to X' vs 'Transfer from Y' — different prefixes by
+    // construction), so anything else is the generic label. Deterministic, not
+    // a heuristic guess.
+    const sharedNote =
+      from.description && from.description === to.description
+        ? from.description
+        : null
+
+    return {
+      key: row.transferId,
+      date: from.date,
+      description: sharedNote || t('transferBetweenAccounts'),
+      accountFrom: accountName(from.account),
+      accountTo: accountName(to.account),
+      // Magnitude of the outgoing leg. Deliberately NOT colored as a loss: the
+      // money did not leave the app, and painting it red is exactly the lie
+      // this grouping exists to remove.
+      amount: Math.abs(from.amount),
+      isNegative: false,
+      transferId: row.transferId
+    }
+  }
 
   const handleFilterChange = (value: string) => {
     setAccountFilter(value === allAccountsValue ? null : value)
   }
 
+  const openDelete = (row: HistoryRow, view: RowView) => {
+    setDeleteTarget({
+      // For a transfer the modal gets the outgoing leg wearing the row's
+      // already-resolved description. The modal only reads `description`,
+      // `Math.abs(amount)` and `accountName`, so this is enough for it to
+      // confirm the row the user actually clicked.
+      transaction: row.kind === 'transfer'
+        ? { ...row.from, description: view.description }
+        : row.transaction,
+      accountName: view.accountTo
+        ? `${view.accountFrom} -> ${view.accountTo}`
+        : view.accountFrom,
+      transferId: view.transferId ?? undefined
+    })
+  }
+
   const handleDelete = (refund: boolean) => {
     if (!deleteTarget) return
-    removeTransaction(deleteTarget.transaction.id, refund)
+    if (deleteTarget.transferId !== undefined) {
+      removeTransfer(deleteTarget.transferId, refund)
+    } else {
+      removeTransaction(deleteTarget.transaction.id, refund)
+    }
     setDeleteTarget(null)
   }
 
@@ -120,7 +297,7 @@ export function TransactionHistory({
           <p className="text-center text-muted-foreground py-4">
             {t('noTransactions')}
           </p>
-        ) : visibleTransactions.length === 0 ? (
+        ) : rows.length === 0 ? (
           // The account filter is active and matched nothing. This is deliberately
           // not `noTransactions`: there IS data, it just belongs to other accounts,
           // and claiming otherwise would be a lie.
@@ -141,40 +318,49 @@ export function TransactionHistory({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleTransactions.map((transaction: Transaction) => {
-                    const account = accounts.find(
-                      (acc) => acc.id === transaction.account
-                    )
-                    const accountName = account?.name || t('unknownAccount')
-                    const description = transaction.description || '—'
+                  {rows.map((row: HistoryRow) => {
+                    const view = toRowView(row)
 
                     return (
-                      <TableRow key={transaction.id}>
+                      <TableRow key={view.key}>
                         <TableCell>
-                          {formatTransactionDate(transaction.date, language)}
+                          {formatTransactionDate(view.date, language)}
                         </TableCell>
-                        <TableCell>{description}</TableCell>
-                        <TableCell className="capitalize">
-                          {accountName}
+                        <TableCell>{view.description}</TableCell>
+                        <TableCell>
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            <span className="capitalize break-words">
+                              {view.accountFrom}
+                            </span>
+                            {view.accountTo && (
+                              <>
+                                {/* The icon carries the direction visually; the
+                                    sr-only glyph keeps it for screen readers. */}
+                                <ArrowRight
+                                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span className="sr-only">→</span>
+                                <span className="capitalize break-words">
+                                  {view.accountTo}
+                                </span>
+                              </>
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell
-                          className={`text-right ${transaction.amount < 0 ? 'text-red-500' : ''}`}
+                          className={`text-right ${view.isNegative ? 'text-red-500' : ''}`}
                         >
-                          {formatCurrency(Math.abs(transaction.amount))}
+                          {formatCurrency(view.amount)}
                         </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            aria-label={`${t('delete')}: ${description}`}
-                            title={`${t('delete')}: ${description}`}
-                            onClick={() =>
-                              setDeleteTarget({
-                                transaction,
-                                accountName
-                              })
-                            }
+                            aria-label={`${t('delete')}: ${view.description}`}
+                            title={`${t('delete')}: ${view.description}`}
+                            onClick={() => openDelete(row, view)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -187,51 +373,54 @@ export function TransactionHistory({
             </div>
 
             <div className="space-y-3 md:hidden">
-              {visibleTransactions.map((transaction: Transaction) => {
-                const account = accounts.find(
-                  (acc) => acc.id === transaction.account
-                )
-                const accountName = account?.name || t('unknownAccount')
-                const description = transaction.description || '—'
+              {rows.map((row: HistoryRow) => {
+                const view = toRowView(row)
 
                 return (
                   <article
-                    key={transaction.id}
+                    key={view.key}
                     className="rounded-lg border bg-card p-3 shadow-sm flex items-center"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="break-words font-medium leading-5">
-                        {description}
+                        {view.description}
                       </p>
                       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <time
-                          dateTime={new Date(transaction.date).toISOString()}
-                        >
-                          {formatTransactionDate(transaction.date, language)}
+                        <time dateTime={new Date(view.date).toISOString()}>
+                          {formatTransactionDate(view.date, language)}
                         </time>
                         <span aria-hidden="true">•</span>
-                        <span className="capitalize break-words">
-                          {accountName}
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          <span className="capitalize break-words">
+                            {view.accountFrom}
+                          </span>
+                          {view.accountTo && (
+                            <>
+                              <ArrowRight
+                                className="h-3.5 w-3.5 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">→</span>
+                              <span className="capitalize break-words">
+                                {view.accountTo}
+                              </span>
+                            </>
+                          )}
                         </span>
                       </div>
                     </div>
                     <p
-                      className={`shrink-0 text-right font-semibold ${transaction.amount < 0 ? 'text-red-500' : ''}`}
+                      className={`shrink-0 text-right font-semibold ${view.isNegative ? 'text-red-500' : ''}`}
                     >
-                      {formatCurrency(Math.abs(transaction.amount))}
+                      {formatCurrency(view.amount)}
                     </p>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      aria-label={`${t('delete')}: ${description}`}
-                      title={`${t('delete')}: ${description}`}
-                      onClick={() =>
-                        setDeleteTarget({
-                          transaction,
-                          accountName
-                        })
-                      }
+                      aria-label={`${t('delete')}: ${view.description}`}
+                      title={`${t('delete')}: ${view.description}`}
+                      onClick={() => openDelete(row, view)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
