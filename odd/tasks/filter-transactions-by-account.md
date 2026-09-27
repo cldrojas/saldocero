@@ -135,20 +135,35 @@ Confirma que el hole era real y que el test lo cubre. También se comprobó que 
 protección depende de la **derivación** y no del literal: con candidato inicial
 `'all'` + loop, el test igual pasa.
 
-### Revisión RDD — ABIERTA, BLOQUEADA POR EL ENTORNO
+### Revisión RDD — ABIERTA, BLOQUEADA POR EL ENTORNO (2 intentos, misma causa)
 - Assessment: `gentle-ai.review-assessment/v1` → **medium**, `executable_change`.
   Contract: en medium el candidate es el PR slice; se cerró por fin de feature.
 - Transacción congelada: lineage `review-891f3657880b2f45`,
   `candidate_tree 1017e0e`, budget de corrección 171, **1 lente** (`review-reliability`).
 - Consentimiento del usuario: `granted` (relay completo del envelope consent/v3).
-- **Pendiente:** la lente R3 no pudo despacharse. El host responde
+- **Pendiente:** la lente R3 no se pudo despachar. El host responde
   `OpenCode's free tier can only be used from within OpenCode` — no es un defecto de
   Gentle AI sino del runtime cliente, así que no procede handoff. La captura NO se
-  fabricó a mano.
+  fabricó a mano. 6 intentos de dispatch, misma causa, sin cambio.
+- **Diagnóstico (corregido):** el free tier NO está agotado — `general` despacha bien.
+  Lo que falla es *el camino de review*: `plugins/opencode-review-transport.ts` hookea
+  el tool `task`, valida el binding, y **reemplaza el system prompt** de la child
+  session antes de que la request llegue al provider. Eso quitaría la acreditación
+  "dentro de OpenCode" que el free tier exige. Hipótesis, no hecho: faltó correr el
+  control de prompt mínimo.
 - Estado: la transacción sigue **intacta y reanudable**, ofreciendo el mismo slot
-  (`review-reliability`, order 0, `subject-hash sha256:ce7d00a9…`). Resolver el
-  despacho de subagentes y relanzar el STATUS ligado retoma el review sin perder
-  la autoridad.
+  (`review-reliability`, order 0, `subject-hash sha256:ce7d00a9…`).
+
+### El candidate congelado NO cubre el fix responsive
+Al commitear el ajuste de layout (`97f77fa`, tree `823a25d`), el STATUS ligado siguió
+reportando `candidate_tree 1017e0e` (el tree de `efebbd5`). La transacción es
+inmutable por diseño: **no se puede re-apuntar** a bytes nuevos. Consecuencia: esa
+transacción, aun funcionando, revisaría el candidate **sin** el fix responsive.
+
+Para revisar los bytes actuales haría falta un START nuevo sobre un target nuevo, que
+requiere un envelope de consentimiento nuevo (el consentimiento es por candidate).
+Ambos caminos chocan con el mismo límite de despacho, así que la decisión es del
+usuario: arreglar el entorno de despacho, o entregar sin review nativa.
 
 ### Fuera de alcance, registrado
 - **Bug preexistente, NO tocado:** `t('unknownAccount')` se usa en
@@ -161,10 +176,11 @@ protección depende de la **derivación** y no del literal: con candidato inicia
   está muerto; no lo monta nadie, solo sus tests.
 
 ## Próximo paso
-1. Resolver el límite de despacho de subagentes del runtime, o decidir delivery sin
-   review — la entrega es decisión del usuario bajo política del repo.
-2. Si se retoma el review: correr el STATUS ligado al lineage
-   `review-891f3657880b2f45` y despachar la lente desde un host que pueda.
-3. Este bloque de progreso quedó **sin commitear a propósito**: cambiar bytes del
-   working tree invalidaría el `candidate_tree` congelado y dejaría el review sin
-   reanudabilidad.
+1. Límite de despacho de subagentes del runtime: es la única cosa que bloquea el
+   review. La entrega (push/PR) es decisión del usuario bajo política del repo.
+2. Si se retoma el review de los bytes actuales: hace falta un START **nuevo** (la
+   transacción `review-891f3657880b2f45` está atada a `1017e0e` y no cubre el fix
+   responsive). Eso implica un envelope de consentimiento nuevo.
+3. La transacción quedó verificada **intacta** tras los 6 fallos: el STATUS ligado
+   reporta `state: reviewing`, `generation: 1`, `action: collect` y el mismo slot. Un
+   fallo de dispatch del host no daña la autoridad congelada.
