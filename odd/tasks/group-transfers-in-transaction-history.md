@@ -206,14 +206,15 @@ OpenCode` (mismo bloqueo de host registrado en el ciclo anterior). A pedido expl
 del usuario la ejecuté yo, con probes medidos. **La transacción nativa quedó intacta y
 sin aprobar**: no se fabricó un `review.capture-result`.
 
-> **CORRECTED AFTER THE FACT — do not trust the conclusions below.** A later
-> post-merge review reproduced all three with runtime probes and found that two of
-> the conclusions here were wrong: in R3-1 the `todayNet !== 0` branch is **not**
-> dead code (it runs on imported data with divergent leg dates and corrupts the
-> persisted day), and in R3-3 "verified by hand" was only true of the row's
-> **position**, not of the **date it displays**. R3-2 was accurate. All three are
-> fixed in `odd/tasks/fix-transfer-grouping-review-findings.md`; see the rewritten
-> D1/D2/D3 entries below. The bullets are kept verbatim as the historical record.
+> **CORREGIDO DESPUÉS — no confíes en las conclusiones de abajo.** Una revisión
+> posterior al merge reprodujo los tres con probes en runtime y encontró que dos de las
+> conclusiones de aquí estaban mal: en R3-1 la rama `todayNet !== 0` **no** es código
+> muerto (se ejecuta con datos importados cuyas patas tienen fechas distintas y corrompe
+> el día persistido), y en R3-3 "verificado a mano" solo era cierto para la **posición**
+> de la fila, no para la **fecha que muestra**. R3-2 era exacto. Los tres quedan
+> corregidos en `odd/tasks/fix-transfer-grouping-review-findings.md`; mira las entradas
+> D1/D2/D3 reescritas más abajo. Los bullets de abajo se conservan textuales como
+> registro histórico.
 
 - **R3-1 (WARNING) — `removeTransfer` deja `remainingToday`/`progress` intactos.**
   Medido: con un gasto real de 200 y una transferencia de 300, al borrar la
@@ -259,66 +260,62 @@ documentan el defecto real y su arreglo; **D4 sigue abierto** y sin tocar. Cada
 ítem registra la medición que lo prueba, el alcance real y qué NO cubre. Ninguno
 es un blocker.
 
-### D1 — FIXED — the refund of a transfer no longer moves the daily allowance
-Found by **post-merge review**, not by the original cycle. Fixed in
-`odd/tasks/fix-transfer-grouping-review-findings.md`.
-- **What this entry originally claimed (and it was wrong):** that the
-  `todayNet !== 0` guard in `removeTransfer` is **dead code** because the net of
-  two legs is always 0. That conclusion was reached from `transferFunds` alone.
-- **The actual defect:** the guard is not dead. `transferFunds` does stamp both
-  legs with `today`, but `replaceAll` (import) keeps whatever date each leg had
-  in the file, and `validateImportJson` checks no date coherence between the legs
-  of one `transferId`. For such a group the net of "today's legs" is a lone
-  leg, the branch runs, and it credits back an amount that was never debited
-  anywhere.
-- **Measured (pre-fix, reproduced):** daily mode turned `remainingToday` 0 → 300
-  and `progress` 0 → 342.86% — and because the day-check effect only runs on a
-  day change, the corrupted values were persisted to `daily-budget-data` and
-  survived a reload. Track mode divided by a zero `dailyAllowance`: `progress`
-  became `Infinity`, which `JSON.stringify` writes as `null` into the very blob
-  `components/sync/sync-qr-modal.tsx` ships over QR sync.
-- **Fix:** the `remainingToday`/`progress` mutation was deleted from
-  `removeTransfer` outright. A transfer is not spending — the money stays inside
-  the app — so `transferFunds` never moves the allowance and its inverse must not
-  move it either. True for every group, divergent dates included. No guard is
-  left pretending to protect something.
-- **Still open, out of scope:**
-  - The pre-existing `removeTransaction` progress bug (a single-leg delete
-    inflates `progress` past 100%) is untouched: a separate known issue.
-  - The underlying refactor is also untouched: `calculateDailyAllowance` only
-    runs in the day-change effect, so a change in `transactions` without a change
-    in `accounts` leaves `usedToday`/`progress` stale.
+### D1 — CORREGIDO — el refund de una transferencia ya no mueve el allowance del día
+Encontrado por una **revisión posterior al merge**, no por el ciclo original. Corregido
+en `odd/tasks/fix-transfer-grouping-review-findings.md`.
+- **Lo que esta entrada afirmaba (y estaba mal):** que la guarda `todayNet !== 0` de
+  `removeTransfer` es **código muerto** porque la neta de dos patas siempre es 0. Esa
+  conclusión salió de mirar solo `transferFunds`.
+- **El defecto real:** la guarda no está muerta. `transferFunds` sí sella ambas patas con
+  `today`, pero `replaceAll` (import) conserva la fecha que cada pata tenía en el archivo
+  y `validateImportJson` no valida coherencia de fechas entre las patas de un mismo
+  `transferId`. Para ese grupo la neta de "las patas de hoy" es una pata suelta, la rama se
+  ejecuta y acredita una cantidad que nunca se descontó en ningún lado.
+- **Medido (pre-fix, reproducido):** en daily mode `remainingToday` pasó de 0 → 300 y
+  `progress` de 0 → 342.86% — y como el efecto de cambio de día solo corre cuando cambia
+  el día, los valores corruptos se persistieron en `daily-budget-data` y sobrevivieron un
+  reload. En track mode dividía por un `dailyAllowance` en cero: `progress` quedó en
+  `Infinity`, que `JSON.stringify` escribe como `null` en el mismo blob que
+  `components/sync/sync-qr-modal.tsx` manda por sync QR.
+- **Fix:** se borró directamente la mutación de `remainingToday`/`progress` de
+  `removeTransfer`. Una transferencia no es gasto — la plata se queda dentro de la app —
+  así que `transferFunds` nunca mueve el allowance y su inversa tampoco debe. Vale para
+  todo grupo, fechas divergentes incluidas. No queda ninguna guarda fingiendo proteger algo.
+- **Sigue abierto, fuera de alcance:**
+  - El bug preexistente de `progress` en `removeTransaction` (borrar una sola pata infla
+    `progress` más allá del 100%) queda sin tocar: es un issue conocido aparte.
+  - El refactor subyacente también queda sin tocar: `calculateDailyAllowance` solo corre en
+    el efecto de cambio de día, así que un cambio en `transactions` sin cambio en `accounts`
+    deja `usedToday`/`progress` desactualizados.
 
-### D2 — FIXED — render keys are namespaced, so `id` and `transferId` cannot collide
-Found by **post-merge review**. Fixed in
+### D2 — CORREGIDO — las claves de render tienen namespace, así que `id` y `transferId` no pueden colisionar
+Encontrado por una **revisión posterior al merge**. Corregido en
 `odd/tasks/fix-transfer-grouping-review-findings.md`.
-- **What this entry originally claimed:** a React "same key" warning when an
-  imported transaction `id` equals another transaction's `transferId`. That part
-  was accurate.
-- **Fix:** render keys are now namespaced by row kind — `tx:${id}` for a `single`
-  row, `tr:${transferId}` for a `transfer` row. `replaceAll` keeps whatever ids
-  the import file carries and `validateImportJson` checks neither uniqueness nor
-  the collision, so unprefixed values really can be equal.
-- **Regression test:** a `single` row whose `id` equals a group's `transferId`,
-  asserting no "same key" warning is emitted and that both rows still render.
+- **Lo que esta entrada afirmaba:** un warning de React "same key" cuando el `id` de una
+  transacción importada equivale al `transferId` de otra. Esa parte era exacta.
+- **Fix:** las claves de render ahora llevan namespace por tipo de fila — `tx:${id}` para
+  una fila `single`, `tr:${transferId}` para una fila `transfer`. `replaceAll` conserva
+  los ids que traiga el archivo y `validateImportJson` no valida ni unicidad ni la
+  colisión, así que los valores sin prefijo realmente pueden coincidir.
+- **Test de regresión:** una fila `single` cuyo `id` equivale al `transferId` de un grupo,
+  afirmando que no se emite warning de "same key" y que ambas filas siguen renderizando.
 
-### D3 — FIXED — grouped row order and displayed date are pinned by a test
-Found by **post-merge review**. Fixed in
+### D3 — CORREGIDO — el orden de la fila agrupada y la fecha mostrada quedan fijados por un test
+Encontrado por una **revisión posterior al merge**. Corregido en
 `odd/tasks/fix-transfer-grouping-review-findings.md`.
-- **What this entry originally claimed (and it was wrong):** "verified by hand:
-  that row anchors on the most recent leg and sorts correctly". Only the
-  **position** was correct. The **displayed date** came from `from`, chosen by
-  **sign**, so the two could disagree.
-- **The actual defect:** a group whose positive leg is more recent than its
-  negative leg (import-reachable) rendered a row labelled with the older date
-  **above** a row labelled with a newer one. Measured: `["22 Sep Transfer
-  between...", "25 Sep Noise..."]`.
-- **Fix:** the anchor leg (`legs[0]`, the first-seen = most recent one) is carried
-  on the `HistoryRow` and is what `toRowView` renders as the date, so position
-  and label come from the same leg and cannot disagree. A well-formed group
-  shares one date across both legs, so the normal path is unchanged.
-- **Regression test:** a group with divergent leg dates plus a plain expense in
-  between, asserting the full rendered order and the displayed date.
+- **Lo que esta entrada afirmaba (y estaba mal):** "verificado a mano: esa fila se ancla en
+  la pata más reciente y ordena bien". Solo la **posición** era correcta. La **fecha
+  mostrada** venía de `from`, elegida por **signo**, así que las dos podían discrepar.
+- **El defecto real:** un grupo cuya pata positiva es más reciente que su negativa
+  (alcanzable por import) renderizaba una fila etiquetada con la fecha vieja **encima** de
+  una etiquetada con una más nueva. Medido: `["22 Sep Transfer between...", "25 Sep
+  Noise..."]`.
+- **Fix:** la pata de anclaje (`legs[0]`, la primera vista = la más reciente) se carga en la
+  `HistoryRow` y es la que `toRowView` renderiza como fecha, así que posición y etiqueta
+  vienen de la misma pata y no pueden discrepar. Un grupo bien formado comparte una fecha
+  entre sus dos patas, así que el camino normal no cambia.
+- **Test de regresión:** un grupo con fechas de pata divergentes más un gasto simple en
+  medio, afirmando el orden renderizado completo y la fecha mostrada.
 
 ### D4 — Overview e historial no coinciden en el número de movimientos
 - `RecentTransactions` sigue mostrando las dos patas de una transferencia, así que

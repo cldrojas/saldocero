@@ -1,93 +1,97 @@
-# Fix — transfer grouping review findings
+# Fix — hallazgos de revisión del grouping de transferencias
 
-## Objective
+## Objetivo
 
-Close three defects in the transfer grouping shipped in #80, all found by an
-**independent review after the feature was merged to `main`**, all reproduced with
-runtime probes first. Every finding is import-reachable: `replaceAll` keeps whatever
-`id` and `date` each leg had in the file, and `validateImportJson` checks neither id
-uniqueness nor date coherence between the legs of one `transferId`. The normal
-`transferFunds` path cannot produce any of them. Debt items D1, D2 and D3 in
-`group-transfers-in-transaction-history.md` were factually wrong and are corrected
-there by this change.
+Cerrar tres defectos en el grouping de transferencias que se subió en #80, los tres
+encontrados por una **revisión independiente posterior a mergear la feature a `main`**,
+y los tres reproducidos antes con probes en runtime. Todos son alcanzables por import:
+`replaceAll` conserva el `id` y la `date` que cada pata tenía en el archivo, y
+`validateImportJson` no valida ni la unicidad de los ids ni la coherencia de fechas entre
+las patas de un mismo `transferId`. El camino normal de `transferFunds` no puede producir
+ninguno. Los ítems de deuda D1, D2 y D3 en `group-transfers-in-transaction-history.md`
+eran factualmente incorrectos y este change los corrige allá.
 
-## Finding 1 — `removeTransfer` corrupted the daily allowance
+## Hallazgo 1 — `removeTransfer` corrompía el allowance del día
 
-`hooks/use-budget.tsx`, `removeTransfer`. The removed block netted the legs dated
-today and moved `remainingToday`/`progress` when that net was non-zero.
-`transferFunds` stamps both legs with `today`, so the net is 0 and the block never
-ran on local data — which is why it read as dead code. On imported data with
-divergent leg dates the net is a lone leg, the branch runs, and it credits back an
-amount that was never debited anywhere:
+`hooks/use-budget.tsx`, `removeTransfer`. El bloque que se borraba nettaba las patas
+fechadas hoy y movía `remainingToday`/`progress` cuando esa neta no era 0.
+`transferFunds` sella ambas patas con `today`, así que la neta es 0 y el bloque nunca
+corría sobre datos locales — por eso se leía como código muerto. Con datos importados
+de fechas de pata divergentes la neta es una pata suelta, la rama se ejecuta y acredita
+una cantidad que nunca se descontó en ningún lado:
 
-- **daily** — `remainingToday` 0 → **300**, `progress` 0 → **342.86%**, persisted to
-  `daily-budget-data` and surviving a reload.
-- **track** — `dailyAllowance` is 0, so the division by zero gave `progress`
-  **`Infinity`**, which `JSON.stringify` writes as **`null`**. That blob is exactly
-  what `components/sync/sync-qr-modal.tsx` ships over QR sync, so the bad value could
-  reach another device.
+- **daily** — `remainingToday` 0 → **300**, `progress` 0 → **342.86%**, persistido en
+  `daily-budget-data` y sobreviviendo un reload.
+- **track** — `dailyAllowance` es 0, así que la división por cero dejó `progress` en
+  **`Infinity`**, que `JSON.stringify` escribe como **`null`**. Ese blob es exactamente
+  lo que `components/sync/sync-qr-modal.tsx` manda por sync QR, así que el valor malo
+  podía llegar a otro dispositivo.
 
-Re-measured during this fix: track mode is `progress = Infinity` in state, `null` on
-disk. The day-check effect only runs on a day change, which is how the values persist.
+Remedido durante este fix: en track mode es `progress = Infinity` en estado, `null` en
+disco. El efecto de cambio de día solo corre cuando cambia el día, que es exactamente
+como los valores se persisten.
 
-**Fix:** the `remainingToday`/`progress` mutation is deleted outright. A transfer is
-not spending — the money stays inside the app — so `transferFunds` never moves the
-allowance and its inverse must not either. True for every case, divergent dates
-included. The misleading comment is replaced by the real invariant; no guard is left
-pretending to protect something.
+**Fix:** la mutación de `remainingToday`/`progress` se borró directamente. Una
+transferencia no es gasto — la plata se queda dentro de la app — así que `transferFunds`
+nunca mueve el allowance y su inversa tampoco debe. Vale para todo caso, fechas
+divergentes incluidas. El comentario engañoso se reemplazó por el invariante real; no
+queda ninguna guarda fingiendo proteger algo.
 
-## Finding 2 — a grouped row could display a date older than the row above it
+## Hallazgo 2 — una fila agrupada podía mostrar una fecha más vieja que la fila de arriba
 
-`components/transaction-history.tsx`, `buildHistoryRows` / `toRowView`. The row's
-**position** was anchored on `legs[0]` (first-seen = most recent) while the displayed
-`date` came from `from`, chosen by **sign**. When the positive leg is newer than the
-negative one, a row labelled with the older date rendered above a newer one — legs
-`+300` today and `-300` five days ago, plus a `-50` expense two days ago, rendered as
+`components/transaction-history.tsx`, `buildHistoryRows` / `toRowView`. La **posición**
+de la fila se anclaba en `legs[0]` (la primera vista = la más reciente) mientras que la
+`date` mostrada venía de `from`, elegida por **signo**. Cuando la pata positiva es más
+nueva que la negativa, una fila etiquetada con la fecha vieja renderizaba encima de una
+con fecha más nueva — patas `+300` de hoy y `-300` de hace cinco días, más un gasto de
+`-50` de hace dos días, renderizaron como
 `["22 Sep Transfer between...", "25 Sep Noise..."]`.
 
-**Fix:** the anchor leg is carried on the transfer `HistoryRow` and is what
-`toRowView` renders as the date, so position and label come from the same leg and
-cannot disagree. A `single` row is unaffected, and a well-formed group shares one
-date across both legs, so the normal path is unchanged.
+**Fix:** la pata de anclaje se carga en la `HistoryRow` de transferencia y es la que
+`toRowView` renderiza como fecha, así que posición y etiqueta vienen de la misma pata y
+no pueden discrepar. Una fila `single` no se ve afectada, y un grupo bien formado comparte
+una fecha entre sus dos patas, así que el camino normal no cambia.
 
-## Finding 3 — a group whose legs share one `id` rendered twice
+## Hallazgo 3 — un grupo cuyas patas comparten un `id` se renderizaba dos veces
 
-`components/transaction-history.tsx`, `buildHistoryRows`. The anchor was
-`if (transaction.id !== legs[0].id) continue`. With both legs carrying the same `id`
-both iterations passed it and the row was pushed twice — duplicate visible content,
-not just a warning (4 React "same key" warnings: 2 desktop rows + 2 mobile rows).
+`components/transaction-history.tsx`, `buildHistoryRows`. El anclaje era
+`if (transaction.id !== legs[0].id) continue`. Con ambas patas llevando el mismo `id` las
+dos iteraciones pasaban el chequeo y la fila se empujaba dos veces — contenido duplicado
+visible, no solo un warning (4 warnings "same key" de React: 2 filas desktop + 2 mobile).
 
-**Fix:** the group is no longer anchored on leg identity. A `Set<string>` of
-`transferId`s already emitted in the pass decides emission, which is
-order-independent and does not assume ids are unique. `legs[0]` stays the anchor for
-position and date.
+**Fix:** el grupo ya no se ancla en la identidad de las patas. Un `Set<string>` de
+`transferId`s ya emitidos en la pasada decide la emisión, lo cual es independiente del
+orden y no asume que los ids sean únicos. `legs[0]` sigue siendo el ancla para posición y
+fecha.
 
-**Also closed, at effectively zero cost:** render keys are namespaced by row kind —
-`tx:${id}` for `single`, `tr:${transferId}` for `transfer` — on both `HistoryRow.key`
-and `RowView.key`. This closes the pre-existing "duplicate React key" debt item, where
-an imported transaction `id` equal to another transaction's `transferId` produced the
-same warning.
+**También cerrado, a costo efectivo cero:** las claves de render llevan namespace por tipo
+de fila — `tx:${id}` para `single`, `tr:${transferId}` para `transfer` — tanto en
+`HistoryRow.key` como en `RowView.key`. Esto cierra el ítem de deuda preexistente de "clave
+de React duplicada", donde una transacción importada con `id` igual al `transferId` de
+otra producía el mismo warning.
 
-## Verification
+## Verificación
 
-- `pnpm exec vitest run`: **165/165 in 14 files** (160 baseline + 5 new).
-- `pnpm exec tsc --noEmit`: **exit 0**. `pnpm lint`: **0 errors**, 5 pre-existing
-  warnings, unchanged.
-- **Mutation-checked:** against the pre-fix sources, reverting
-  `components/transaction-history.tsx` fails all 3 new history tests (22 existing still
-  pass); restoring the `removeTransfer` block fails both new hook tests with
-  `remainingToday` 300 against the expected 0 (24 existing still pass). Not vacuous.
+- `pnpm exec vitest run`: **165/165 en 14 archivos** (160 base + 5 nuevos).
+- `pnpm exec tsc --noEmit`: **exit 0**. `pnpm lint`: **0 errores**, 5 warnings
+  preexistentes, sin cambio.
+- **Verificado por mutación:** contra las fuentes pre-fix, revertir
+  `components/transaction-history.tsx` falla los 3 tests nuevos de history (los 22
+  existentes siguen pasando); restaurar el bloque de `removeTransfer` falla los 2 tests
+  nuevos del hook con `remainingToday` 300 contra el 0 esperado (los 24 existentes siguen
+  pasando). No es vacuo.
 
-## Out of scope
+## Fuera de alcance
 
-- The pre-existing `removeTransaction` progress bug (a single-leg delete inflates
-  `progress` past 100%). Deliberately untouched.
-- D4: `RecentTransactions` still shows both legs, so overview and history disagree on
-  movement count. Still open. The `calculateDailyAllowance` refactor is untouched too.
+- El bug preexistente de `progress` en `removeTransaction` (borrar una sola pata infla
+  `progress` más allá del 100%). Sin tocar a propósito.
+- D4: `RecentTransactions` sigue mostrando las dos patas, así que overview e historial no
+  coinciden en el conteo de movimientos. Sigue abierto. El refactor de
+  `calculateDailyAllowance` tampoco se tocó.
 
-## Next steps
+## Próximo paso
 
-1. Push and PR are the user's call. Commit type `fix`, scope `history` + `budget`.
-2. Worth considering separately: validating date coherence and id uniqueness in
-   `validateImportJson` would remove the import surface these three findings shared,
-   instead of relying on the consumers to be defensive.
+1. Push y PR son decisión del usuario. Tipo de commit `fix`, scope `history` + `budget`.
+2. Vale la pena considerarlo por separado: validar coherencia de fechas y unicidad de ids
+   en `validateImportJson` eliminaría la superficie de import que these tres hallazgos
+   compartían, en vez de depender de que los consumidores sean defensivos.
