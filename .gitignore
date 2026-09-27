@@ -33,6 +33,7 @@ next-env.d.ts
 # agents
 .kilocode/
 .atl/
+.codegraph/
 
 # generated code for test context
 /test-results
