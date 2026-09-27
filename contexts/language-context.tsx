@@ -175,6 +175,9 @@ export const translations = {
     transactionDescription: 'All your recent activity',
     date: 'Date',
     noTransactions: 'No transactions yet',
+    filterByAccount: 'Filter by account',
+    allAccounts: 'All accounts',
+    noTransactionsInAccount: 'No transactions in this account',
 
     // Toasts
     expenseAdded: 'Expense Added',
@@ -398,6 +401,9 @@ export const translations = {
     transactionDescription: 'Tu actividad financiera reciente',
     date: 'Fecha',
     noTransactions: 'Aún no hay transacciones',
+    filterByAccount: 'Filtrar por cuenta',
+    allAccounts: 'Todas las cuentas',
+    noTransactionsInAccount: 'No hay transacciones en esta cuenta',
 
     // Toasts
     expenseAdded: 'Gasto registrado',

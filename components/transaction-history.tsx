@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import {
   Card,
@@ -18,6 +18,13 @@ import {
   TableRow
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { useLanguage } from '@/contexts/language-context'
 import { useCurrency } from '@/contexts/currency-context'
 import { formatTransactionDate } from '@/lib/transaction-date'
@@ -41,11 +48,39 @@ export function TransactionHistory({
     transaction: Transaction
     accountName: string
   } | null>(null)
+  // `null` means "no account filter applied". Kept distinct from any account id so
+  // the "all accounts" option can never be confused with a real account.
+  const [accountFilter, setAccountFilter] = useState<string | null>(null)
+
+  // Radix reserves the empty string, so the "all accounts" option needs a real
+  // value. Account ids are user-derived slugs (`use-budget#addAccount` maps a name
+  // to `name.toLowerCase().replace(/\s+/g, '-')`), so hardcoding a sentinel would
+  // collide with an account literally named e.g. "All": two items sharing one value
+  // and a filter that silently keeps showing everything. Derive a value that
+  // cannot collide instead.
+  const allAccountsValue = useMemo(() => {
+    const accountIds = new Set(accounts.map((account) => account.id))
+    let candidate = '__all__'
+    while (accountIds.has(candidate)) candidate = `_${candidate}`
+    return candidate
+  }, [accounts])
 
   // Sort transactions by date descending (most recent first)
   const sortedTransactions = transactions.toSorted(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   )
+
+  // Filtering the already-sorted list keeps desktop (table) and mobile (cards)
+  // showing exactly the same set.
+  const visibleTransactions = accountFilter === null
+    ? sortedTransactions
+    : sortedTransactions.filter(
+      (transaction) => transaction.account === accountFilter
+    )
+
+  const handleFilterChange = (value: string) => {
+    setAccountFilter(value === allAccountsValue ? null : value)
+  }
 
   const handleDelete = (refund: boolean) => {
     if (!deleteTarget) return
@@ -55,14 +90,42 @@ export function TransactionHistory({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{t('transactionHistory')}</CardTitle>
-        <CardDescription>{t('transactionDescription')}</CardDescription>
+      <CardHeader className="flex flex-col items-center gap-4 space-y-0 sm:flex-row sm:justify-between">
+        <div className="min-w-0">
+          <CardTitle>{t('transactionHistory')}</CardTitle>
+          <CardDescription>{t('transactionDescription')}</CardDescription>
+        </div>
+        <Select
+          value={accountFilter === null ? allAccountsValue : accountFilter}
+          onValueChange={handleFilterChange}
+        >
+          <SelectTrigger
+            className="w-[11rem] shrink-0"
+            aria-label={t('filterByAccount')}
+          >
+            <SelectValue placeholder={t('allAccounts')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={allAccountsValue}>{t('allAccounts')}</SelectItem>
+            {accounts.map((account) => (
+              <SelectItem key={account.id} value={account.id}>
+                {account.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </CardHeader>
       <CardContent>
         {transactions.length === 0 ? (
           <p className="text-center text-muted-foreground py-4">
             {t('noTransactions')}
+          </p>
+        ) : visibleTransactions.length === 0 ? (
+          // The account filter is active and matched nothing. This is deliberately
+          // not `noTransactions`: there IS data, it just belongs to other accounts,
+          // and claiming otherwise would be a lie.
+          <p className="text-center text-muted-foreground py-4">
+            {t('noTransactionsInAccount')}
           </p>
         ) : (
           <>
@@ -78,7 +141,7 @@ export function TransactionHistory({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedTransactions.map((transaction: Transaction) => {
+                  {visibleTransactions.map((transaction: Transaction) => {
                     const account = accounts.find(
                       (acc) => acc.id === transaction.account
                     )
@@ -124,7 +187,7 @@ export function TransactionHistory({
             </div>
 
             <div className="space-y-3 md:hidden">
-              {sortedTransactions.map((transaction: Transaction) => {
+              {visibleTransactions.map((transaction: Transaction) => {
                 const account = accounts.find(
                   (acc) => acc.id === transaction.account
                 )
