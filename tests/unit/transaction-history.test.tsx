@@ -481,7 +481,17 @@ describe('TransactionHistory import-shaped transfers', () => {
         amount: -42 as Int,
         description: 'Collides',
         account: 'daily',
-        date: new Date(2026, 0, 11)
+        // UTC construction, matching the `transfer` fixture it collides with —
+        // NOT the local-time `new Date(2026, 0, n)` the label test above uses.
+        // Mixing the two makes this assertion timezone-dependent: local midnight
+        // is 5h after UTC midnight west of Greenwich (the single sorts first),
+        // but they tie exactly under UTC, where a stable sort keeps the input
+        // order and the group sorts first. Key collision does not depend on the
+        // date at all, so pinning both to UTC makes the order exact and
+        // timezone-invariant. The distinct 12 Jan also avoids relying on that
+        // tie. The label test needs local construction precisely because it
+        // asserts rendered dates; this one asserts no label, only order.
+        date: new Date('2026-01-12')
       }
     ]
 
