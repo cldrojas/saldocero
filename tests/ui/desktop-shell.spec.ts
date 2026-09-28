@@ -46,6 +46,11 @@ test.describe('Desktop shell (lg+)', () => {
     await expect(page.getByTestId('mobile-fab-add-transaction')).toBeHidden()
     // The hamburger that hosts ConfigForm is `sm:hidden`: unreachable on desktop.
     await expect(page.getByRole('button', { name: 'Open menu' })).toBeHidden()
+    // The config gear covers the band the sidebar does not. At lg the sidebar
+    // owns settings, and two controls sharing the same accessible name would
+    // also make `getByRole('button', { name: 'Configuración de presupuesto' })`
+    // ambiguous.
+    await expect(page.getByTestId('header-config-trigger')).toBeHidden()
   })
 
   test('switches surfaces from the sidebar without leaving the page', async ({ page }) => {
@@ -93,5 +98,27 @@ test.describe('Desktop shell (lg+)', () => {
     await expect(page.getByTestId('mobile-chrome')).toBeVisible()
     await expect(page.getByTestId('mobile-fab-add-transaction')).toBeVisible()
     await expect(page.getByRole('navigation', SIDEBAR)).toBeHidden()
+    // The gear belongs to the sm..lg band only; below sm the hamburger owns the
+    // whole menu, config included.
+    await expect(page.getByTestId('header-config-trigger')).toBeHidden()
+  })
+
+  test('opens the config sheet from the header gear between sm and lg', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 800 })
+
+    // The band the sidebar does not cover yet: neither the sidebar nor the
+    // mobile chrome is a complete way in, so the gear opens the config directly.
+    await expect(page.getByRole('navigation', SIDEBAR)).toBeHidden()
+    const gear = page.getByTestId('header-config-trigger')
+    await expect(gear).toBeVisible()
+
+    await gear.click()
+
+    const sheet = page.getByRole('dialog', { name: 'Configuración de presupuesto' })
+    await expect(sheet).toBeVisible()
+    // The form keeps its own collapsed trigger, same as every other surface.
+    await sheet.getByRole('button', { name: 'Configuración de presupuesto' }).click()
+    await expect(page.getByTestId('import-data-button')).toBeVisible()
+    await expect(page.getByTestId('qr-export-button')).toBeVisible()
   })
 })
