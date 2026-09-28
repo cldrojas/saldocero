@@ -413,8 +413,8 @@ export function useBudget() {
   // calling it twice in a row to drop a pair computes the second
   // `setTransactions` from the same stale array and RESURRECTS the leg the
   // first call just deleted. A grouped history row deletes as one unit, so the
-  // group needs its own atomic API: one filter, one account update, one daily
-  // adjustment.
+  // group needs its own atomic API: one filter, one account update, and no
+  // daily-allowance adjustment (see the invariant below).
   const removeTransfer = (transferId: string, refund: boolean = true) => {
     const legs = transactions.filter((t) => t.transferId === transferId)
     // Unknown id: nothing to remove, and nothing to refund.
@@ -432,20 +432,19 @@ export function useBudget() {
         return { ...acc, balance: toInt(acc.balance - legSum) ?? 0 as Int }
       }))
 
-      // The daily allowance moves ONCE, by the net sum of today's legs. For a
-      // well-formed transfer that net is 0 (+X on one account, -X on the other),
-      // which is the correct outcome: moving money between your own accounts is
-      // not spending. Skipping the update on a zero net also avoids writing a
-      // division by a zero `dailyAllowance` in track mode, which would poison
-      // `progress` with NaN.
-      const todayNet = legs
-        .filter((leg) => isToday(leg.date))
-        .reduce((sum, leg) => sum + leg.amount, 0)
-
-      if (todayNet !== 0) {
-        setRemainingToday(remainingToday - todayNet)
-        setProgress(((remainingToday - todayNet) / dailyAllowance) * 100)
-      }
+      // The daily allowance is NOT touched here, and that is the invariant, not
+      // an omission: a transfer is not spending — the money stays inside the
+      // app — so `transferFunds` never moves `remainingToday`/`progress` either,
+      // and its inverse must not move them back. Anything else would let a
+      // deletion fabricate allowance.
+      //
+      // This holds for EVERY group, including imported ones whose legs carry
+      // different dates. An earlier version netted the legs dated today and
+      // adjusted the allowance when that net was non-zero, which corrupts the
+      // day: for a group with divergent leg dates it credited an amount that
+      // was never debited anywhere (progress above 100% in daily mode,
+      // Infinity — serialized as `null` into the blob that QR sync ships to
+      // other devices — in track mode, where `dailyAllowance` is 0).
     }
 
     setTransactions(transactions.filter((t) => t.transferId !== transferId))

@@ -79,11 +79,13 @@ necesita una API propia, atómica:
 - Un solo `setAccounts`: por cuenta, `balance - sum(amount de sus patas)`. Es la misma
   aritmética de `removeTransaction` (`balance - amount`) aplicada por pata, pero en una
   sola actualización de estado.
-- `remainingToday`/`progress`: se ajustan **una** vez con la **suma neta** de las patas de
-  hoy, no una vez por pata. Para una transferencia esa suma es 0 (una pata `+X`, otra
-  `-X`), así que el allowance diario no se altera: correcto, porque mover plata entre
-  cuentas propias no es gasto del día. `removeTransaction` aplicado dos veces no es una
-  alternativa: ya está roto por el closure.
+- `remainingToday`/`progress`: **no se tocan.** Invariante, no omisión: una transferencia
+  no es gasto (la plata no sale de la app), así que `transferFunds` tampoco mueve el
+  allowance y su inversa no debe moverlo. Esto vale para **todo** grupo, incluidas las
+  patas con fechas distintas que puede traer un import. `removeTransaction` aplicado dos
+  veces no es una alternativa: ya está roto por el closure.
+  *(Corregido post-merge: la versión original de este doc ajustaba el allowance con la
+  suma neta de las patas de hoy, y esa rama corrompía el día persistido. Ver D1.)*
 
 ### 5. Agrupación en `TransactionHistory`
 - Orden: `sortedTransactions` (fecha desc) → **filas** → filtro de cuenta. El filtro tiene
@@ -204,6 +206,16 @@ OpenCode` (mismo bloqueo de host registrado en el ciclo anterior). A pedido expl
 del usuario la ejecuté yo, con probes medidos. **La transacción nativa quedó intacta y
 sin aprobar**: no se fabricó un `review.capture-result`.
 
+> **CORREGIDO DESPUÉS — no confíes en las conclusiones de abajo.** Una revisión
+> posterior al merge reprodujo los tres con probes en runtime y encontró que dos de las
+> conclusiones de aquí estaban mal: en R3-1 la rama `todayNet !== 0` **no** es código
+> muerto (se ejecuta con datos importados cuyas patas tienen fechas distintas y corrompe
+> el día persistido), y en R3-3 "verificado a mano" solo era cierto para la **posición**
+> de la fila, no para la **fecha que muestra**. R3-2 era exacto. Los tres quedan
+> corregidos en `odd/tasks/fix-transfer-grouping-review-findings.md`; mira las entradas
+> D1/D2/D3 reescritas más abajo. Los bullets de abajo se conservan textuales como
+> registro histórico.
+
 - **R3-1 (WARNING) — `removeTransfer` deja `remainingToday`/`progress` intactos.**
   Medido: con un gasto real de 200 y una transferencia de 300, al borrar la
   transferencia con refund el balance de `daily` vuelve 500 → 800 pero
@@ -240,56 +252,70 @@ sin aprobar**: no se fabricó un `review.capture-result`.
 `RecentTransactions` sigue mostrando las dos patas: overview e historial ahora no
 coinciden en el número de movimientos. Documentado, no corregido.
 
-## Deuda técnica conocida — NO tocado en este change
+## Deuda técnica conocida
 
-Decidido por el maintainer: documentar, no arreglar. Cada ítem registra la
-medición que lo prueba, el alcance real y qué NO cubre. Ninguno es un blocker.
+Origen de esta sección: el maintainer decidió documentar, no arreglar, y así se
+registró. **D1, D2 y D3 los corrigió después una revisión post-merge** y ahora
+documentan el defecto real y su arreglo; **D4 sigue abierto** y sin tocar. Cada
+ítem registra la medición que lo prueba, el alcance real y qué NO cubre. Ninguno
+es un blocker.
 
-### D1 — El refund de una transferencia no mueve el allowance del día
-- **Síntoma:** con un gasto real de 200 y una transferencia de 300, al borrar la
-  transferencia con refund el balance de `daily` vuelve 500 → 800 pero
-  `remainingToday` sigue en 0 y `progress` en 0. La plata que vuelve no aparece en
-  el allowance del día.
-- **Causa raíz:** la guarda `todayNet !== 0` en `removeTransfer` es **código muerto**
-  para toda transferencia bien formada, porque la neta de las dos patas siempre es 0.
-  La rama del allowance nunca se ejecuta. El código *lee* como si manejara el
-  allowance cuando estructuralmente no puede.
-- **Por qué no lo arregla este change:** definir la contabilidad correcta del
-  allowance es cambio de comportamiento de producto, no refactor. Afecta también al
-  camino preexistente.
-- **Preexistente, no regresión:** `removeTransaction` sobre una sola pata da
-  `remainingToday` 300 y `progress` **300%**. Antes estaba peor y visiblemente absurdo.
-  Arreglar solo `removeTransfer` dejaría los dos caminos con reglas distintas.
-- **Refactor subyacente sin tocar:** `calculateDailyAllowance` solo corre en el efecto
-  de cambio de día, así que un cambio en `transactions` sin cambio en `accounts`
-  deja `usedToday`/`progress` desactualizados.
-- **Cómo reproducir:** el bloque de measurement de R3-1 arriba.
+### D1 — CORREGIDO — el refund de una transferencia ya no mueve el allowance del día
+Encontrado por una **revisión posterior al merge**, no por el ciclo original. Corregido
+en `odd/tasks/fix-transfer-grouping-review-findings.md`.
+- **Lo que esta entrada afirmaba (y estaba mal):** que la guarda `todayNet !== 0` de
+  `removeTransfer` es **código muerto** porque la neta de dos patas siempre es 0. Esa
+  conclusión salió de mirar solo `transferFunds`.
+- **El defecto real:** la guarda no está muerta. `transferFunds` sí sella ambas patas con
+  `today`, pero `replaceAll` (import) conserva la fecha que cada pata tenía en el archivo
+  y `validateImportJson` no valida coherencia de fechas entre las patas de un mismo
+  `transferId`. Para ese grupo la neta de "las patas de hoy" es una pata suelta, la rama se
+  ejecuta y acredita una cantidad que nunca se descontó en ningún lado.
+- **Medido (pre-fix, reproducido):** en daily mode `remainingToday` pasó de 0 → 300 y
+  `progress` de 0 → 342.86% — y como el efecto de cambio de día solo corre cuando cambia
+  el día, los valores corruptos se persistieron en `daily-budget-data` y sobrevivieron un
+  reload. En track mode dividía por un `dailyAllowance` en cero: `progress` quedó en
+  `Infinity`, que `JSON.stringify` escribe como `null` en el mismo blob que
+  `components/sync/sync-qr-modal.tsx` manda por sync QR.
+- **Fix:** se borró directamente la mutación de `remainingToday`/`progress` de
+  `removeTransfer`. Una transferencia no es gasto — la plata se queda dentro de la app —
+  así que `transferFunds` nunca mueve el allowance y su inversa tampoco debe. Vale para
+  todo grupo, fechas divergentes incluidas. No queda ninguna guarda fingiendo proteger algo.
+- **Sigue abierto, fuera de alcance:**
+  - El bug preexistente de `progress` en `removeTransaction` (borrar una sola pata infla
+    `progress` más allá del 100%) queda sin tocar: es un issue conocido aparte.
+  - El refactor subyacente también queda sin tocar: `calculateDailyAllowance` solo corre en
+    el efecto de cambio de día, así que un cambio en `transactions` sin cambio en `accounts`
+    deja `usedToday`/`progress` desactualizados.
 
-### D2 — Clave de React duplicada si un `id` importado equivale a un `transferId`
-- **Síntoma:** React emite el warning de "same key". Confirmado con captura de
-  `console.error`.
-- **Causa raíz:** `buildHistoryRows` usa `transaction.id` como clave de fila simple y
-  `transferId` como clave de fila agrupada, sin namespace. `replaceAll` acepta ids del
-  archivo y `validateImportJson` **no valida unicidad de ids** ni colisión con
-  `transferId`.
-- **Consecuencia:** reconciliación de filas incorrecta; React puede reusar el contenido
-  de otra fila entre renders.
-- **Fix barato si se decide:** namespacear las claves de render (`tx:` vs `tr:`), o
-  derivar la clave de fila de la posición en la lista ordenada.
-- **Alcance real:** solo alcanzable por import o estado local manipulado. No lo
-  produce la UI normal.
+### D2 — CORREGIDO — las claves de render tienen namespace, así que `id` y `transferId` no pueden colisionar
+Encontrado por una **revisión posterior al merge**. Corregido en
+`odd/tasks/fix-transfer-grouping-review-findings.md`.
+- **Lo que esta entrada afirmaba:** un warning de React "same key" cuando el `id` de una
+  transacción importada equivale al `transferId` de otra. Esa parte era exacta.
+- **Fix:** las claves de render ahora llevan namespace por tipo de fila — `tx:${id}` para
+  una fila `single`, `tr:${transferId}` para una fila `transfer`. `replaceAll` conserva
+  los ids que traiga el archivo y `validateImportJson` no valida ni unicidad ni la
+  colisión, así que los valores sin prefijo realmente pueden coincidir.
+- **Test de regresión:** una fila `single` cuyo `id` equivale al `transferId` de un grupo,
+  afirmando que no se emite warning de "same key" y que ambas filas siguen renderizando.
 
-### D3 — Orden de fila agrupada sin cobertura
-- **Síntoma:** ningún test afirma la posición de una fila agrupada entre filas
-  simples, ni un grupo cuyas dos patas traen **fechas distintas**.
-- **Por qué importa:** un grupo con patas de fechas distintas decide qué fecha muestra
-  la fila. Es alcanzable por import, porque `validateImportJson` no valida coherencia
-  de fechas entre patas del mismo `transferId`.
-- **Verificado a mano, no por test:** esa fila se ancla en la pata más reciente y
-  ordena correctamente entre las simples.
-- **Lo que sí está cubierto:** el mecanismo de grouping, por mutación. Quitar el
-  anclaje al primer leg → 4 tests fallan. Forzar que nunca se emitan filas de
-  transferencia → 8 tests fallan.
+### D3 — CORREGIDO — el orden de la fila agrupada y la fecha mostrada quedan fijados por un test
+Encontrado por una **revisión posterior al merge**. Corregido en
+`odd/tasks/fix-transfer-grouping-review-findings.md`.
+- **Lo que esta entrada afirmaba (y estaba mal):** "verificado a mano: esa fila se ancla en
+  la pata más reciente y ordena bien". Solo la **posición** era correcta. La **fecha
+  mostrada** venía de `from`, elegida por **signo**, así que las dos podían discrepar.
+- **El defecto real:** un grupo cuya pata positiva es más reciente que su negativa
+  (alcanzable por import) renderizaba una fila etiquetada con la fecha vieja **encima** de
+  una etiquetada con una más nueva. Medido: `["22 Sep Transfer between...", "25 Sep
+  Noise..."]`.
+- **Fix:** la pata de anclaje (`legs[0]`, la primera vista = la más reciente) se carga en la
+  `HistoryRow` y es la que `toRowView` renderiza como fecha, así que posición y etiqueta
+  vienen de la misma pata y no pueden discrepar. Un grupo bien formado comparte una fecha
+  entre sus dos patas, así que el camino normal no cambia.
+- **Test de regresión:** un grupo con fechas de pata divergentes más un gasto simple en
+  medio, afirmando el orden renderizado completo y la fecha mostrada.
 
 ### D4 — Overview e historial no coinciden en el número de movimientos
 - `RecentTransactions` sigue mostrando las dos patas de una transferencia, así que
@@ -305,11 +331,13 @@ medición que lo prueba, el alcance real y qué NO cubre. Ninguno es un blocker.
   cobertura desktop/mobile es jsdom, no navegador real.
 
 ## Próximo paso
-1. **Decidido:** D1 y D2 quedan como deuda documentada, no se arreglan en este
-   change. Los cuatro ítems están en "Deuda técnica conocida" arriba.
+1. **Actualizado:** D1, D2 y D3 los corrigió la revisión post-merge registrada en
+   `odd/tasks/fix-transfer-grouping-review-findings.md`; las entradas de arriba
+   reflecten el estado real. **D4 sigue abierto y sin tocar.**
 2. La transacción nativa `review-7ded6a98e8523c31` sigue **intacta y reanudable**. No
    quemó autoridad: no hubo captura, y la revisión se hizo a mano por petición
    explícita del usuario. Quien la retome necesita despachar la lente
    `review-reliability` contra el mismo candidate tree `d4274235`.
 3. Push y PR son decisión del usuario. Si se abre el PR, el reviewer debería leer
-   primero la sección de deuda: D1 y D2 son conocidas y aceptadas, no omisiones.
+   primero la sección de deuda: lo que queda abierto es D4 y la deuda preexistente,
+   no omisiones.

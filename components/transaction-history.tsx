@@ -53,9 +53,27 @@ type HistoryRow =
       kind: 'transfer'
       key: string
       transferId: string
+      /**
+       * The leg that anchored this row's position in the sorted list (`legs[0]`,
+       * the first-seen one, which is the most recent). It is ALSO the leg whose
+       * date the row displays: position and label must come from the same leg
+       * or the list reads as mis-sorted.
+       */
+      anchor: Transaction
       from: Transaction
       to: Transaction
     }
+
+/**
+ * Render keys are namespaced by row kind. `replaceAll` keeps whatever ids the
+ * import file carries and `validateImportJson` checks neither id uniqueness nor
+ * a collision between a transaction `id` and a `transferId`, so unprefixed
+ * values can genuinely be equal across the two kinds and React would warn about
+ * (and mis-reconcile) duplicate keys. The prefix is applied here, once, and
+ * `toRowView` reuses the resulting `HistoryRow.key`.
+ */
+const singleKey = (id: string) => `tx:${id}`
+const transferKey = (transferId: string) => `tr:${transferId}`
 
 /**
  * Groups the legs of every transfer into single rows, then applies the account
@@ -81,9 +99,16 @@ function buildHistoryRows(
 
   const rows: HistoryRow[] = []
 
+  // transferIds already emitted in this pass. Membership is what decides
+  // whether a group row is emitted, NOT identity of the legs: `replaceAll`
+  // keeps whatever ids the import file carries and `validateImportJson` does not
+  // check id uniqueness, so two legs of one group can share an `id` and an
+  // `id`-anchored check would let both through and render the row twice.
+  const emittedTransfers = new Set<string>()
+
   for (const transaction of sortedTransactions) {
     if (transaction.transferId === undefined) {
-      rows.push({ kind: 'single', key: transaction.id, transaction })
+      rows.push({ kind: 'single', key: singleKey(transaction.id), transaction })
       continue
     }
 
@@ -93,13 +118,13 @@ function buildHistoryRows(
     // half-deleted transfer; rendering those as one row would mean inventing
     // the counterpart that is not there, so each leg degrades to its own row.
     if (legs.length !== 2) {
-      rows.push({ kind: 'single', key: transaction.id, transaction })
+      rows.push({ kind: 'single', key: singleKey(transaction.id), transaction })
       continue
     }
 
-    // Anchor the row on the FIRST leg so rows keep the sort order of the list
-    // they came from, and the second leg never renders on its own.
-    if (transaction.id !== legs[0].id) continue
+    // One row per group, no matter how many legs point at it.
+    if (emittedTransfers.has(transaction.transferId)) continue
+    emittedTransfers.add(transaction.transferId)
 
     // `from` is the negative leg, `to` the positive one — the same sign
     // convention the whole history already uses. If the signs cannot be told
@@ -111,8 +136,13 @@ function buildHistoryRows(
 
     rows.push({
       kind: 'transfer',
-      key: transaction.transferId,
+      key: transferKey(transaction.transferId),
       transferId: transaction.transferId,
+      // `legs[0]` decides the row's position AND supplies the displayed date, so
+      // the two cannot disagree. Deriving the date from the negative leg instead
+      // put a row labelled with an older date above a row labelled with a newer
+      // one whenever the legs carried different dates (reachable via import).
+      anchor: legs[0],
       from,
       to
     })
@@ -197,7 +227,7 @@ export function TransactionHistory({
     if (row.kind === 'single') {
       const { transaction } = row
       return {
-        key: transaction.id,
+        key: row.key,
         date: transaction.date,
         description: transaction.description || '—',
         accountFrom: accountName(transaction.account),
@@ -221,8 +251,10 @@ export function TransactionHistory({
         : null
 
     return {
-      key: row.transferId,
-      date: from.date,
+      key: row.key,
+      // The anchor leg, NOT `from`: the anchor is the leg that decided this
+      // row's position, so it is the only date that can be consistent with it.
+      date: row.anchor.date,
       description: sharedNote || t('transferBetweenAccounts'),
       accountFrom: accountName(from.account),
       accountTo: accountName(to.account),
