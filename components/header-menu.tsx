@@ -31,8 +31,54 @@ interface HeaderMenuProps {
 
 type SheetView = "menu" | "settings"
 
+/**
+ * Budget config body, shared by both sheets that host the ConfigForm: the
+ * mobile sub-view (which needs the back control) and the sm+ gear sheet
+ * (opened straight into the config, so no back control). The form keeps its own
+ * collapsed trigger, exactly as in the desktop settings surface.
+ */
+function ConfigSheetView({
+  budget,
+  onUpdateConfig,
+  onClearData,
+  onBack,
+}: Pick<HeaderMenuProps, "budget" | "onUpdateConfig" | "onClearData"> & {
+  onBack?: () => void
+}) {
+  const { t } = useLanguage()
+
+  return (
+    <>
+      <SheetHeader className="p-6 pb-4">
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 -ml-2"
+              onClick={onBack}
+              aria-label="Back to menu"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
+          <SheetTitle>{t("budgetConfiguration")}</SheetTitle>
+        </div>
+      </SheetHeader>
+      <div className="px-6 pb-6 overflow-y-auto max-h-[calc(100vh-120px)]">
+        <ConfigForm
+          budget={budget}
+          onUpdateConfig={onUpdateConfig}
+          onClearData={onClearData}
+        />
+      </div>
+    </>
+  )
+}
+
 export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuProps) {
   const [open, setOpen] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
   const [view, setView] = useState<SheetView>("menu")
   const { theme, setTheme, resolvedTheme } = useTheme()
   const { t, language, setLanguage } = useLanguage()
@@ -78,6 +124,30 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
             <Moon className="h-5 w-5" />
           )}
         </Button>
+        {/* Config: the sidebar only exists at lg, so between sm and lg this row
+            is the only header affordance that reaches the settings. `lg:hidden`
+            keeps lg+ unambiguous — there the sidebar owns "Ajustes" and the
+            inline ConfigForm trigger would answer to the same name. */}
+        <Sheet open={configOpen} onOpenChange={setConfigOpen}>
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              title={t("budgetConfiguration")}
+              data-testid="header-config-trigger"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-72 p-0">
+            <ConfigSheetView
+              budget={budget}
+              onUpdateConfig={onUpdateConfig}
+              onClearData={onClearData}
+            />
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* Mobile: hamburger + sheet */}
@@ -171,29 +241,12 @@ export function HeaderMenu({ budget, onUpdateConfig, onClearData }: HeaderMenuPr
               </>
             ) : (
               /* Settings sub-view */
-              <>
-                <SheetHeader className="p-6 pb-4">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 -ml-2"
-                      onClick={handleBackToMenu}
-                      aria-label="Back to menu"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <SheetTitle>{t("budgetConfiguration")}</SheetTitle>
-                  </div>
-                </SheetHeader>
-                <div className="px-6 pb-6 overflow-y-auto max-h-[calc(100vh-120px)]">
-                  <ConfigForm
-                    budget={budget}
-                    onUpdateConfig={onUpdateConfig}
-                    onClearData={onClearData}
-                  />
-                </div>
-              </>
+              <ConfigSheetView
+                budget={budget}
+                onUpdateConfig={onUpdateConfig}
+                onClearData={onClearData}
+                onBack={handleBackToMenu}
+              />
             )}
           </SheetContent>
         </Sheet>
