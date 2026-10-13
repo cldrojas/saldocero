@@ -621,13 +621,16 @@ export function useBudget() {
     amount,
     fromAccount,
     toAccount,
-    description
+    description,
+    date
   }: {
     amount: Int
     fromAccount: string
     toAccount: string
     description?: string
+    date?: Date
   }) => {
+    const transferDate = date ?? today
     // One id shared by both legs. This is what makes the pair recognizable as
     // one transfer later on, and it has to be recorded HERE at write time:
     // `type: 'transfer'` is not an identifier (the daily auto-save and the
@@ -640,7 +643,7 @@ export function useBudget() {
     const withdrawalTransaction: Transaction = {
       id: uuidv4(),
       type: 'expense',
-      date: today,
+      date: transferDate,
       amount: toInt(-amount) ?? 0 as Int,
       description:
         description || 'Transfer to ' + accounts.find((a) => a.id === toAccount)?.name,
@@ -652,7 +655,7 @@ export function useBudget() {
     const depositTransaction: Transaction = {
       id: uuidv4(),
       type: 'income',
-      date: today,
+      date: transferDate,
       amount: amount,
       description:
         description ||
