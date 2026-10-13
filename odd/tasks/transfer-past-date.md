@@ -98,13 +98,24 @@ y cualquier fecha pasada sin agregar lógica condicional.
 ### T1 — COMPLETADO
 
 ### Verificación
-- pnpm exec vitest run: 172 passed
-- pnpm lint: 0 errors, 5 warnings (preexisting)
-- pnpm exec tsc --noEmit: sin errores
+- `pnpm exec vitest run`: **172 passed** (16 archivos; 165 antes en este branch point)
+- `pnpm lint`: **0 errores**, 5 warnings preexistentes
+- `pnpm exec tsc --noEmit`: sin errores
+- Spot check del padre: se re-ejecutó `pnpm exec vitest run` → 172 passed (verificación de registro).
 
-### Commit
-- hash: 3fd4f2b
-- mensaje: feat(transfer): allow registering a transfer with a past date
+### Commits
+- `3fd4f2b` — `feat(transfer): allow registering a transfer with a past date`
+  (transfer-modal.tsx, use-budget.tsx, transfer-modal.test.tsx, use-budget.test.tsx)
+- `fc329b8` — `docs(odd): record transfer past-date task document`
+
+### Revisión nativa (RDD on, decidido por global)
+- Preflight STATUS con `--base-ref main --committed-only` → `fresh_target_ready`, riesgo **medium**.
+- Envelope `gentle-ai.review-integration.consent/v3` presentado; el humano eligió
+  **"Omitir esta vez"** (`consent: "declined_this_candidate"`) — decline **candidate-scoped**,
+  NO el kill switch. No se ejecutó ninguna lente y no se creó registro de revisión.
+- Camino off de RDD aplicado: `gentle-ai review assess` over el diff del writer → medium,
+  cubierto por la auto-verificación del writer + el spot check del padre.
 
 ## Próximo paso
-Revisión nativa por work-unit commit (RDD on, decidido por global).
+Push y PR son decisión del usuario (no se hizo push). Si se abre PR, es un change
+single-PR: 5 archivos, 293 líneas cambiadas, dentro del presupuesto de ~400.
