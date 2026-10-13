@@ -577,6 +577,59 @@ describe('useBudget hook', () => {
       expect(result.current.accounts.find((a) => a.id === 'daily')!.balance).toBe(700)
       expect(result.current.accounts.find((a) => a.id === 'savings')!.balance).toBe(300)
     })
+
+    it('transfers both legs with the given date when date is provided', () => {
+      const { result } = renderHook(() => useBudget())
+      const pastDate = new Date('2024-01-15')
+
+      act(() => {
+        result.current.setupBudget({
+          startAmount: 1000 as any,
+          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        })
+      })
+
+      act(() => {
+        result.current.transferFunds({
+          amount: 300 as any,
+          fromAccount: 'daily',
+          toAccount: 'savings',
+          date: pastDate
+        })
+      })
+
+      const legs = result.current.transactions.filter((t) => t.transferId !== undefined)
+      const out = legs.find((t) => t.account === 'daily')!
+      const into = legs.find((t) => t.account === 'savings')!
+      expect(out.date).toEqual(pastDate)
+      expect(into.date).toEqual(pastDate)
+    })
+
+    it('transfers use today when date is omitted', () => {
+      const { result } = renderHook(() => useBudget())
+      const today = new Date()
+
+      act(() => {
+        result.current.setupBudget({
+          startAmount: 1000 as any,
+          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        })
+      })
+
+      act(() => {
+        result.current.transferFunds({
+          amount: 300 as any,
+          fromAccount: 'daily',
+          toAccount: 'savings'
+        })
+      })
+
+      const legs = result.current.transactions.filter((t) => t.transferId !== undefined)
+      const out = legs.find((t) => t.account === 'daily')!
+      const into = legs.find((t) => t.account === 'savings')!
+      expect(out.date.toDateString()).toBe(today.toDateString())
+      expect(into.date.toDateString()).toBe(today.toDateString())
+    })
   })
 
   describe('removeTransfer never moves the daily allowance', () => {

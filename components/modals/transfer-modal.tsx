@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { DatePicker } from '@/components/date-picker'
 import { useToast } from '@/hooks/use-toast'
 import { useLanguage } from '@/contexts/language-context'
 import { Account, Int, toInt } from '@/types'
@@ -32,6 +33,7 @@ interface TransferModalProps {
     fromAccount: string
     toAccount: string
     description?: string
+    date: Date
   }) => void
   accounts: Account[]
 }
@@ -49,6 +51,7 @@ export function TransferModal({
   const [fromAccount, setFromAccount] = useState('')
   const [toAccount, setToAccount] = useState('')
   const [description, setDescription] = useState('')
+  const [date, setDate] = useState(() => new Date())
 
   const handleSubmit = (e: { preventDefault: () => void }) => {
     e.preventDefault()
@@ -108,7 +111,8 @@ export function TransferModal({
       amount: transferAmount,
       fromAccount,
       toAccount,
-      description: description || undefined
+      description: description || undefined,
+      date
     })
 
     toast({
@@ -121,6 +125,7 @@ export function TransferModal({
     setFromAccount('')
     setToAccount('')
     setDescription('')
+    setDate(new Date())
     onClose()
   }
 
@@ -206,6 +211,11 @@ export function TransferModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="date">{t('date')}</Label>
+              <DatePicker date={date} setDate={setDate} className="w-full" allowPrevious />
             </div>
           </div>
           <div className="flex justify-end space-x-2 pt-4">
