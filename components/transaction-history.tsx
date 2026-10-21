@@ -356,7 +356,7 @@ export function TransactionHistory({
                     return (
                       <TableRow key={view.key}>
                         <TableCell>
-                          {formatTransactionDate(view.date, language)}
+                          {formatTransactionDate(view.date, language, { weekday: true })}
                         </TableCell>
                         <TableCell>{view.description}</TableCell>
                         <TableCell>
@@ -419,7 +419,7 @@ export function TransactionHistory({
                       </p>
                       <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         <time dateTime={new Date(view.date).toISOString()}>
-                          {formatTransactionDate(view.date, language)}
+                          {formatTransactionDate(view.date, language, { weekday: true })}
                         </time>
                         <span aria-hidden="true">•</span>
                         <span className="inline-flex flex-wrap items-center gap-1.5">

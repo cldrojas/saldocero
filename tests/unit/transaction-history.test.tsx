@@ -395,8 +395,8 @@ describe('TransactionHistory import-shaped transfers', () => {
   it('shows the anchor leg date, so a grouped row never reads older than the row above it', () => {
     // The NEGATIVE leg is the older one, so the row's position (anchored on the
     // first-seen = most recent leg) and the date it used to display (taken from
-    // the negative leg) disagreed: a row labelled "10 Jan" rendered above a row
-    // labelled "12 Jan".
+    // the negative leg) disagreed: a row labelled "Sat 10 Jan" rendered above a
+    // row labelled "Mon 12 Jan".
     //
     // Local-time construction, not `new Date('2026-01-15')`: the ISO form is
     // parsed as UTC midnight and would render as the previous day west of
@@ -440,13 +440,13 @@ describe('TransactionHistory import-shaped transfers', () => {
     // plain expense lands between it and the now-hidden 10 Jan leg. The whole
     // list is asserted so a row reappearing anywhere is caught too.
     expect(desktopRows()).toEqual([
-      { date: '15 Jan', description: 'Transfer between accounts' },
-      { date: '12 Jan', description: 'Noise' }
+      { date: 'Thu 15 Jan', description: 'Transfer between accounts' },
+      { date: 'Mon 12 Jan', description: 'Noise' }
     ])
 
     // The displayed date is the anchor leg's, not the outgoing leg's.
     const grouped = rowOf(screen.getAllByText('Transfer between accounts')[0])
-    expect(grouped.textContent).toContain('15 Jan')
+    expect(grouped.textContent).toContain('Thu 15 Jan')
     expect(grouped.textContent).not.toContain('10 Jan')
   })
 
@@ -523,3 +523,47 @@ function duplicateKeyWarnings(consoleErrors: unknown[][]) {
     typeof first === 'string' && first.toLowerCase().includes('same key')
   )
 }
+
+// The weekday prefix is part of the label the history shows, so it is pinned
+// here and not only in the helper's own test: what matters is what the user
+// reads in the list.
+describe('TransactionHistory date labels', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.localStorage.setItem('language', 'en')
+  })
+
+  // Local-time construction on purpose: `new Date('2026-10-18')` is parsed as
+  // UTC midnight and would render as the previous day west of Greenwich.
+  const sunday = new Date(2026, 9, 18)
+
+  const sundayTransaction: Transaction[] = [
+    {
+      id: 't-sunday',
+      type: 'expense',
+      amount: -85 as Int,
+      description: 'Groceries',
+      account: 'daily',
+      date: sunday
+    }
+  ]
+
+  it('prefixes the short weekday name to the date on both surfaces', () => {
+    renderHistory({ transactions: sundayTransaction })
+
+    // The desktop table cell.
+    expect(desktopRows()[0]?.date).toBe('Sun 18 Oct')
+
+    // The mobile card: the same list, rendered as cards.
+    const card = document.querySelector('article') as HTMLElement
+    expect(card.textContent).toContain('Sun 18 Oct')
+  })
+
+  it('localizes the weekday name', () => {
+    window.localStorage.setItem('language', 'es')
+
+    renderHistory({ transactions: sundayTransaction })
+
+    expect(desktopRows()[0]?.date).toBe('dom 18 oct')
+  })
+})
